@@ -275,6 +275,21 @@ impl Cipher {
     }
 
     #[must_use]
+    pub fn aria_128_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_gcm()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_gcm()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_gcm()) }
+    }
+
+    #[must_use]
     pub fn des_cbc() -> Cipher {
         unsafe { Cipher(ffi::EVP_des_cbc()) }
     }
@@ -891,6 +906,80 @@ mod tests {
         assert_ne!(&ct[..], &pt[..]);
         let back = decrypt(Cipher::aria_128_ctr(), &key, Some(&iv), &ct).unwrap();
         assert_eq!(&back[..], &pt[..]);
+    }
+
+    // ARIA-GCM KATs from OpenSSL's evpciph_aria.txt. Covers the 12-byte-IV
+    // fast path, the GHASH IV-derivation path (non-12-byte IVs), 128/256-bit
+    // keys, AAD, and tag verification + tamper detection.
+    #[test]
+    fn test_aria_gcm_kat() {
+        struct V {
+            cipher: Cipher,
+            key: &'static str,
+            iv: &'static str,
+            aad: &'static str,
+            pt: &'static str,
+            ct: &'static str,
+            tag: &'static str,
+        }
+        let pt = "f57af5fd4ae19562976ec57a5a7ad55a5af5c5e5c5fdf5c55ad57a4a7272d57262e9729566ed66e97ac54a4a5a7ad5e15ae5fdd5fd5ac5d56ae56ad5c572d54ae54ac55a956afd6aed5a4ac562957a9516991691d572fd14e97ae962ed7a9f4a955af572e162f57a956666e17ae1f54a95f566d54a66e16e4afd6a9f7ae1c5c55ae5d56afde916c5e94a6ec56695e14afde1148416e94ad57ac5146ed59d1cc5";
+        let aad = "8008315ebf2e6fe020e8f5eb";
+        let cases = [
+            V {
+                cipher: Cipher::aria_128_gcm(),
+                key: "e91e5e75da65554a48181f3846349562",
+                iv: "000020e8f5eb00000000315e",
+                aad,
+                pt,
+                ct: "4d8a9a0675550c704b17d8c9ddc81a5cd6f7da34f2fe1b3db7cb3dfb9697102ea0f3c1fc2dbc873d44bceeae8e4442974ba21ff6789d3272613fb9631a7cf3f14bacbeb421633a90ffbe58c2fa6bdca534f10d0de0502ce1d531b6336e58878278531e5c22bc6c85bbd784d78d9e680aa19031aaf89101d669d7a3965c1f7e16229d7463e0535f4e253f5d18187d40b8ae0f564bd970b5e7e2adfb211e89a953",
+                tag: "5abace3f37f5a736f4be984bbffbedc1",
+            },
+            V {
+                cipher: Cipher::aria_256_gcm(),
+                key: "0c5ffd37a11edc42c325287fc0604f2e3e8cd5671a00fe3216aa5eb105783b54",
+                iv: "000020e8f5eb00000000315e",
+                aad,
+                pt,
+                ct: "6f9e4bcbc8c85fc0128fb1e4a0a20cb9932ff74581f54fc013dd054b19f99371425b352d97d3f337b90b63d1b082adeeea9d2d7391897d591b985e55fb50cb5350cf7d38dc27dda127c078a149c8eb98083d66363a46e3726af217d3a00275ad5bf772c7610ea4c23006878f0ee69a8397703169a419303f40b72e4573714d19e2697df61e7c7252e5abc6bade876ac4961bfac4d5e867afca351a48aed52822",
+                tag: "e210d6ced2cf430ff841472915e7ef48",
+            },
+            // 5-byte IV -> exercises the GHASH-based J0 derivation.
+            V {
+                cipher: Cipher::aria_128_gcm(),
+                key: "e91e5e75da65554a48181f3846349562",
+                iv: "0001020304",
+                aad,
+                pt,
+                ct: "1723ccfc0ed44a12520473cfeb63bc933cd450a943f5f1cba78e19d72f80cc102acc51f2459a06cf6435182b8ddd451f83e13479efe5ec7dfbf16229f4017920fb41457a9b6fe1a401b30b2f332d827ae2f86e962326927c1ed8bfedac1f7a00ddde63bd392a8f28a488ba5974689f8d15b9b1739fb50aae0ff244026ec72064003c621b33ffc8086b0a97eefb70604a2826f6499f6eb12d67a0da03fc8e1482",
+                tag: "ebaa2645bb154542117ee46031aa176e",
+            },
+        ];
+
+        for v in cases {
+            let key = Vec::from_hex(v.key).unwrap();
+            let iv = Vec::from_hex(v.iv).unwrap();
+            let aad = Vec::from_hex(v.aad).unwrap();
+            let pt = Vec::from_hex(v.pt).unwrap();
+            let expected_ct = Vec::from_hex(v.ct).unwrap();
+            let expected_tag = Vec::from_hex(v.tag).unwrap();
+
+            let mut tag = vec![0u8; 16];
+            let ct = encrypt_aead(v.cipher, &key, Some(&iv), &aad, &pt, &mut tag).unwrap();
+            assert_eq!(ct, expected_ct, "ARIA-GCM ciphertext mismatch");
+            assert_eq!(tag, expected_tag, "ARIA-GCM tag mismatch");
+
+            let dec =
+                decrypt_aead(v.cipher, &key, Some(&iv), &aad, &expected_ct, &expected_tag).unwrap();
+            assert_eq!(dec, pt, "ARIA-GCM decrypt mismatch");
+
+            // A corrupted tag must fail authentication.
+            let mut bad_tag = expected_tag.clone();
+            bad_tag[0] ^= 0x01;
+            assert!(
+                decrypt_aead(v.cipher, &key, Some(&iv), &aad, &expected_ct, &bad_tag).is_err(),
+                "ARIA-GCM accepted a forged tag"
+            );
+        }
     }
 
     // Test vectors from FIPS-197:
