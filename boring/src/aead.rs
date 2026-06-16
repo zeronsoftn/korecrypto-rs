@@ -152,6 +152,13 @@ impl Algorithm {
         unsafe { Self(ffi::EVP_aead_lea_256_ccm()) }
     }
 
+    /// SEED in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_seed_ccm)]
+    #[must_use]
+    pub fn seed_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_seed_ccm()) }
+    }
+
     /// Returns the key length, in bytes, required by this algorithm.
     #[corresponds(EVP_AEAD_key_length)]
     #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -538,6 +545,45 @@ mod tests {
             ctx.open_in_place(&nonce, ct2.as_mut_slice(), &bad_tag, &aad)
                 .is_err(),
             "LEA-CCM accepted a forged tag"
+        );
+    }
+
+    // SEED-CCM KAT (generated from the KISA SEED CCM reference; M=16, L=3).
+    #[test]
+    fn seed_ccm_kat() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let expected_ct =
+            Vec::from_hex("3963c3c8dd2586a2e419e31a65752de7d77c64fbc85b12cc24637164e0547f85")
+                .unwrap();
+        let expected_tag = Vec::from_hex("cf9c2277fc24284e2c13f8eab12575ea").unwrap();
+
+        let algorithm = Algorithm::seed_ccm();
+        let ctx = AeadCtx::new(&algorithm, &key, 16).unwrap();
+
+        let mut buffer = pt.clone();
+        let mut tag = [0u8; 16];
+        let tag_written = ctx
+            .seal_in_place(&nonce, buffer.as_mut_slice(), &mut tag, &aad)
+            .unwrap();
+        assert_eq!(buffer, expected_ct, "SEED-CCM ciphertext mismatch");
+        assert_eq!(tag_written, &expected_tag[..], "SEED-CCM tag mismatch");
+
+        let mut ct = expected_ct.clone();
+        ctx.open_in_place(&nonce, ct.as_mut_slice(), &expected_tag, &aad)
+            .unwrap();
+        assert_eq!(ct, pt, "SEED-CCM decrypt mismatch");
+
+        let mut ct2 = expected_ct.clone();
+        let mut bad_tag = expected_tag.clone();
+        bad_tag[0] ^= 0x01;
+        assert!(
+            ctx.open_in_place(&nonce, ct2.as_mut_slice(), &bad_tag, &aad)
+                .is_err(),
+            "SEED-CCM accepted a forged tag"
         );
     }
 

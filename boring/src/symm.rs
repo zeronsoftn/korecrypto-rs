@@ -350,6 +350,43 @@ impl Cipher {
         unsafe { Cipher(ffi::EVP_lea_256_gcm()) }
     }
 
+    /// SEED (KS X 1213-1 / RFC 4269), a KCMVP validation-target block cipher.
+    #[must_use]
+    pub fn seed_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_ecb()) }
+    }
+
+    #[must_use]
+    pub fn seed_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_cbc()) }
+    }
+
+    #[must_use]
+    pub fn seed_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_ctr()) }
+    }
+
+    #[must_use]
+    pub fn seed_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_gcm()) }
+    }
+
+    /// HIGHT (KS X 1213-2), a KCMVP validation-target 64-bit-block cipher.
+    #[must_use]
+    pub fn hight_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_ecb()) }
+    }
+
+    #[must_use]
+    pub fn hight_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_cbc()) }
+    }
+
+    #[must_use]
+    pub fn hight_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_ctr()) }
+    }
+
     #[must_use]
     pub fn des_cbc() -> Cipher {
         unsafe { Cipher(ffi::EVP_des_cbc()) }
@@ -1131,6 +1168,109 @@ mod tests {
             .unwrap();
             assert_eq!(dec, pt, "LEA-GCM decrypt mismatch");
         }
+    }
+
+    // SEED single-block KATs from RFC 4269 (Appendix B). ECB, padding off.
+    #[test]
+    fn test_seed_ecb_kat() {
+        let cases = [
+            (
+                "00000000000000000000000000000000",
+                "000102030405060708090a0b0c0d0e0f",
+                "5ebac6e0054e166819aff1cc6d346cdb",
+            ),
+            (
+                "000102030405060708090a0b0c0d0e0f",
+                "00000000000000000000000000000000",
+                "c11f22f20140505084483597e4370f43",
+            ),
+            (
+                "4706480851e61be85d74bfb3fd956185",
+                "83a2f8a288641fb9a4e9a5cc2f131c7d",
+                "ee54d13ebcae706d226bc3142cd40d4a",
+            ),
+        ];
+        for (key_hex, pt_hex, ct_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let pt = Vec::from_hex(pt_hex).unwrap();
+            let expected = Vec::from_hex(ct_hex).unwrap();
+
+            let mut enc = Crypter::new(Cipher::seed_ecb(), Mode::Encrypt, &key, None).unwrap();
+            enc.pad(false);
+            let mut out = vec![0; pt.len() + Cipher::seed_ecb().block_size()];
+            let mut n = enc.update(&pt, &mut out).unwrap();
+            n += enc.finalize(&mut out[n..]).unwrap();
+            out.truncate(n);
+            assert_eq!(out, expected, "SEED ECB encrypt mismatch");
+
+            let mut dec = Crypter::new(Cipher::seed_ecb(), Mode::Decrypt, &key, None).unwrap();
+            dec.pad(false);
+            let mut back = vec![0; expected.len() + Cipher::seed_ecb().block_size()];
+            let mut m = dec.update(&expected, &mut back).unwrap();
+            m += dec.finalize(&mut back[m..]).unwrap();
+            back.truncate(m);
+            assert_eq!(back, pt, "SEED ECB decrypt mismatch");
+        }
+    }
+
+    // SEED-GCM KAT (generated from the KISA SEED GCM reference).
+    #[test]
+    fn test_seed_gcm_kat() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let expected_ct =
+            Vec::from_hex("76545855fa87031b929bc66b7fbdbb49301fe4b611cf5e9f540aee1e0a9a474c")
+                .unwrap();
+        let expected_tag = Vec::from_hex("1d35345efcfbb5ed20d842f1bc3f71ed").unwrap();
+
+        let mut tag = vec![0u8; 16];
+        let ct = encrypt_aead(Cipher::seed_gcm(), &key, Some(&nonce), &aad, &pt, &mut tag).unwrap();
+        assert_eq!(ct, expected_ct, "SEED-GCM ciphertext mismatch");
+        assert_eq!(tag, expected_tag, "SEED-GCM tag mismatch");
+        let dec = decrypt_aead(
+            Cipher::seed_gcm(),
+            &key,
+            Some(&nonce),
+            &aad,
+            &expected_ct,
+            &expected_tag,
+        )
+        .unwrap();
+        assert_eq!(dec, pt, "SEED-GCM decrypt mismatch");
+    }
+
+    // HIGHT single-block KAT from the KISA reference (64-bit block). ECB.
+    #[test]
+    fn test_hight_ecb_kat() {
+        let key = Vec::from_hex("88e34f8f081779f1e9f394370ad40589").unwrap();
+        let pt = Vec::from_hex("d76d0d18327ec562").unwrap();
+        let expected = Vec::from_hex("e4bc2e312277e4dd").unwrap();
+
+        let mut enc = Crypter::new(Cipher::hight_ecb(), Mode::Encrypt, &key, None).unwrap();
+        enc.pad(false);
+        let mut out = vec![0; pt.len() + Cipher::hight_ecb().block_size()];
+        let mut n = enc.update(&pt, &mut out).unwrap();
+        n += enc.finalize(&mut out[n..]).unwrap();
+        out.truncate(n);
+        assert_eq!(out, expected, "HIGHT ECB encrypt mismatch");
+
+        let mut dec = Crypter::new(Cipher::hight_ecb(), Mode::Decrypt, &key, None).unwrap();
+        dec.pad(false);
+        let mut back = vec![0; expected.len() + Cipher::hight_ecb().block_size()];
+        let mut m = dec.update(&expected, &mut back).unwrap();
+        m += dec.finalize(&mut back[m..]).unwrap();
+        back.truncate(m);
+        assert_eq!(back, pt, "HIGHT ECB decrypt mismatch");
+
+        // CBC round-trip across multiple blocks.
+        let iv = Vec::from_hex("0001020304050607").unwrap();
+        let data = b"HIGHT 64-bit blk";
+        let ct = encrypt(Cipher::hight_cbc(), &key, Some(&iv), data).unwrap();
+        let back = decrypt(Cipher::hight_cbc(), &key, Some(&iv), &ct).unwrap();
+        assert_eq!(&back[..], &data[..]);
     }
 
     // Test vectors from FIPS-197:
