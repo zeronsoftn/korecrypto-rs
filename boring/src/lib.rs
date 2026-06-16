@@ -137,6 +137,7 @@ pub mod fips;
 pub mod hash;
 pub mod hmac;
 pub mod hpke;
+pub mod kdf;
 pub mod memcmp;
 #[cfg(feature = "mlkem")]
 pub mod mlkem;
