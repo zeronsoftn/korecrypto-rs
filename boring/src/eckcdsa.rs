@@ -43,6 +43,17 @@ impl EcKcdsaKey {
         }
     }
 
+    /// 개인키를 무작위 생성하고 공개키 계산 후 키쌍 일치시험(PCT)을 수행한다.
+    pub fn generate(&mut self) -> Result<(), ErrorStack> {
+        unsafe {
+            if ffi::EC_KCDSA_KEY_generate(self.as_ptr()) == 1 {
+                Ok(())
+            } else {
+                Err(ErrorStack::get())
+            }
+        }
+    }
+
     /// 검증용으로 공개키 좌표(빅엔디안)를 설정한다.
     pub fn set_public(&mut self, qx: &[u8], qy: &[u8]) -> Result<(), ErrorStack> {
         unsafe {
@@ -197,6 +208,42 @@ mod tests {
         assert!(key.verify(MessageDigest::sha224(), &msg, &sig));
     }
 
+    // KISA EC-KCDSA 참조구현(SECP256r1 / SHA-256) 교차검증 KAT.
+    #[test]
+    fn eckcdsa_p256_sha256_kat() {
+        let d = Vec::from_hex("df237149978c84091e2f312f7e8819e5806cf8f888a0e7e8d67e9cbeee4d4f89")
+            .unwrap();
+        let qx = Vec::from_hex("4d9934d8aa6a08cf70d871a02ad5cda8e8a563f0d63aaab1ae718d20fdf16274")
+            .unwrap();
+        let qy = Vec::from_hex("583e3d8e44e793774577178ade5a8fde98ed4dd67139be6210ce85bc3bd36599")
+            .unwrap();
+        let k = Vec::from_hex("345adb5c41acec891d2fee2f68069a0086f75c9afaa661a14987608ff4ea6e1a")
+            .unwrap();
+        let msg = Vec::from_hex(
+            "5468697320697320612073616d706c65206d65737361676520666f722045432d4b4344534120696d706c656d656e746174696f6e2076616c69646174696f6e2e",
+        )
+        .unwrap();
+        let expected_r =
+            Vec::from_hex("fad56e1689082ba49a1e51e6959b882e58937551bff4a91257cedbadee8af209")
+                .unwrap();
+        let expected_s =
+            Vec::from_hex("a92e54f8ff68b4353544469b5cf0715a085174ae08dc4ee187ad59d77c308c27")
+                .unwrap();
+
+        let mut key = EcKcdsaKey::new(Nid::X9_62_PRIME256V1.as_raw()).unwrap();
+        key.set_private(&d).unwrap();
+        let (gx, gy) = key.public_coords().unwrap();
+        assert_eq!(gx, qx, "Qx mismatch");
+        assert_eq!(gy, qy, "Qy mismatch");
+
+        let sig = key.sign(MessageDigest::sha256(), &msg, Some(&k)).unwrap();
+        let mut expected = expected_r.clone();
+        expected.extend_from_slice(&expected_s);
+        assert_eq!(sig, expected, "signature mismatch");
+
+        assert!(key.verify(MessageDigest::sha256(), &msg, &sig));
+    }
+
     // 내부 난수 사용 시 sign→verify 왕복.
     #[test]
     fn eckcdsa_roundtrip_random_k() {
@@ -206,5 +253,20 @@ mod tests {
         let msg = b"hello ec-kcdsa";
         let sig = key.sign(MessageDigest::sha224(), msg, None).unwrap();
         assert!(key.verify(MessageDigest::sha224(), msg, &sig));
+    }
+
+    // 키 생성 + PCT 후 sign→verify 왕복(P-224, P-256).
+    #[test]
+    fn eckcdsa_generate_and_sign() {
+        for (nid, md) in [
+            (Nid::SECP224R1.as_raw(), MessageDigest::sha224()),
+            (Nid::X9_62_PRIME256V1.as_raw(), MessageDigest::sha256()),
+        ] {
+            let mut key = EcKcdsaKey::new(nid).unwrap();
+            key.generate().unwrap();
+            let msg = b"generated ec-kcdsa key";
+            let sig = key.sign(md, msg, None).unwrap();
+            assert!(key.verify(md, msg, &sig));
+        }
     }
 }

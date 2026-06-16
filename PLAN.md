@@ -103,9 +103,9 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 ### Phase 4 — 전자서명 (KCDSA, EC-KCDSA)
 - [x] **KCDSA**(`crypto/fipsmodule/kcdsa/kcdsa.cc.inc`, `include/openssl/kcdsa.h`): 도메인 파라미터(P/Q/G), 키생성(y=G^{x^{-1} mod Q} mod P), 서명/검증. BoringSSL BIGNUM 재사용, 해시 SHA-224/256. Rust `boring/src/kcdsa.rs` + KISA 참조구현 교차검증 KAT(P=2048,Q=224,SHA-224).
 - [x] **EC-KCDSA**(`crypto/fipsmodule/eckcdsa/eckcdsa.cc.inc`, `include/openssl/eckcdsa.h`): 기존 `ec`/`bn` 인프라 재사용(NIST P-224/P-256), 공개키 Q=d^{-1}·G. Rust `boring/src/eckcdsa.rs` + KISA 참조구현 교차검증 KAT(P-224/SHA-224).
-- [ ] (후속) `EVP_PKEY` 통합: 현재는 DRBG/KBKDF와 동일하게 독립 함수 API로 노출. 필요 시 `EVP_PKEY_KCDSA` 타입 등록.
-- [ ] (후속) 키쌍 일치시험(PCT)을 키생성 시 추가(조건부 자가시험 요구).
-- [ ] (후속) NID/OID 등록 및 SHA-256/P-256 추가 KAT.
+- [x] 키 생성 + 키쌍 일치시험(PCT): `EC_KCDSA_KEY_generate`/`KCDSA_KEY_generate` — 무작위 개인키(BN_rand_range_ex) 생성 후 PCT(서명→검증) 수행, 실패 시 키 폐기. Rust `generate()`.
+- [x] 추가 KAT: EC-KCDSA P-256/SHA-256, KCDSA Q=256/SHA-256 (KISA 참조 교차검증). 키생성+PCT 왕복 시험.
+- [ ] (후속) `EVP_PKEY` 통합: 현재는 DRBG/KBKDF와 동일하게 독립 함수 API로 노출. 필요 시 `EVP_PKEY_KCDSA` 타입/`pkey_method`, ASN.1 인코딩, NID/OID 등록.
 
 ### Phase 5 — KDF (KBKDF)
 - [ ] **KBKDF**(SP800-108, Counter/Feedback 모드, HMAC·CMAC 기반): `crypto/fipsmodule/kdf/kbkdf.cc.inc` 신규.
