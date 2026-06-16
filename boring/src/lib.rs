@@ -128,6 +128,7 @@ pub mod bn;
 pub mod conf;
 pub mod derive;
 pub mod dh;
+pub mod drbg;
 pub mod dsa;
 pub mod ec;
 pub mod ecdsa;

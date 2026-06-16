@@ -780,6 +780,7 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "hight.h",
         "lsh.h",
         "kbkdf.h",
+        "drbg_kcmvp.h",
         "asn1_mac.h",
         "asn1t.h",
         "blake2.h",
