@@ -778,6 +778,7 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "lea.h",
         "seed.h",
         "hight.h",
+        "lsh.h",
         "asn1_mac.h",
         "asn1t.h",
         "blake2.h",

@@ -76,6 +76,37 @@ impl MessageDigest {
         unsafe { MessageDigest(ffi::EVP_sha512_256()) }
     }
 
+    /// LSH (KS X 3262), a KCMVP validation-target hash function.
+    #[must_use]
+    pub fn lsh256_224() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh256_224()) }
+    }
+
+    #[must_use]
+    pub fn lsh256_256() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh256_256()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_224() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_224()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_256() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_256()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_384() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_384()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_512() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_512()) }
+    }
+
     #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn as_ptr(&self) -> *const ffi::EVP_MD {
@@ -400,6 +431,43 @@ mod tests {
         h.write_all(&Vec::from_hex(hashtest.0).unwrap()).unwrap();
         let res = h.finish().unwrap();
         assert_eq!(hex::encode(res), hashtest.1);
+    }
+
+    // LSH (KS X 3262) KATs, generated from the KISA LSH reference. Inputs are
+    // the empty string and "abc" (0x616263).
+    #[test]
+    fn test_lsh_kat() {
+        let cases: [(MessageDigest, &str, &str); 7] = [
+            (MessageDigest::lsh256_224(), "",
+             "48a0d55b2b3d91f26e06f7110fe9ce8ea0e2656bbe344cb1c5930653"),
+            (MessageDigest::lsh256_224(), "616263",
+             "f7c53ba4034e708e74fba42e55997ca5126bb7623688f85342f73732"),
+            (MessageDigest::lsh256_256(), "616263",
+             "5fbf365daea5446a7053c52b57404d77a07a5f48a1f7c1963a0898ba1b714741"),
+            (MessageDigest::lsh512_224(), "",
+             "3c124edfe149b45c067965dae681322cdf52aa2c9d738b8f271b9318"),
+            (MessageDigest::lsh512_256(), "616263",
+             "cd892310532602332b613f1ec11a6962fca61ea09ecffcd4bcf75858d802edec"),
+            (MessageDigest::lsh512_384(), "616263",
+             "5f344efaa0e43ccd2e5e194d6039794b4fb431f10fb4b65fd45e9da4ecde0f27b66e8dbdfa47252e0d0b741bfd91f9fe"),
+            (MessageDigest::lsh512_512(), "",
+             "118a2ff2a99e3b2134125e2baf20ebe3bdd034d5a69b29c22fc4995063340b46697801d7f7fb0070568f78e8ed514215fc70af27d6f27b01aa8a1da72b14ce7c"),
+        ];
+        for (md, input, expected) in cases {
+            hash_test(md, &(input, expected));
+        }
+
+        // Chunked updates (crossing block boundaries) must match one-shot.
+        let data = vec![0x5au8; 300];
+        for md in [MessageDigest::lsh256_256(), MessageDigest::lsh512_512()] {
+            let oneshot = hash(md, &data).unwrap();
+            let mut h = Hasher::new(md).unwrap();
+            for chunk in data.chunks(7) {
+                h.update(chunk).unwrap();
+            }
+            let chunked = h.finish().unwrap();
+            assert_eq!(hex::encode(&oneshot), hex::encode(&chunked));
+        }
     }
 
     // Test vectors from http://www.nsrl.nist.gov/testdata/
