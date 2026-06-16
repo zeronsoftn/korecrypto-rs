@@ -132,12 +132,14 @@ pub mod drbg;
 pub mod dsa;
 pub mod ec;
 pub mod ecdsa;
+pub mod eckcdsa;
 pub mod error;
 pub mod ex_data;
 pub mod fips;
 pub mod hash;
 pub mod hmac;
 pub mod hpke;
+pub mod kcdsa;
 pub mod kdf;
 pub mod memcmp;
 #[cfg(feature = "mlkem")]

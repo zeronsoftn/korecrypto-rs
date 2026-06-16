@@ -101,11 +101,11 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 - [ ] 기존 `rand`의 진입점에서 모듈 기본 RNG는 CTR_DRBG 유지하되, KCMVP용 Hash/HMAC_DRBG 인스턴스 API 제공 및 연속시험(continuous test) 적용.
 
 ### Phase 4 — 전자서명 (KCDSA, EC-KCDSA)
-- [ ] **KCDSA**(`crypto/fipsmodule/kcdsa/`): 도메인 파라미터, 키생성, 서명/검증. 해시는 SHA-2/LSH 연동.
-- [ ] **EC-KCDSA**(`crypto/fipsmodule/ec_kcdsa/`): 기존 `ec`/`bn` 인프라 재사용, 곡선 파라미터 정의.
-- [ ] `EVP_PKEY` 통합: `crypto/evp`에 `EVP_PKEY_KCDSA` 타입/메서드 등록(`pkey_method`), 서명/검증 핸들러.
-- [ ] 키쌍 일치시험(PCT)을 키생성 시 추가(조건부 자가시험 요구).
-- [ ] NID/OID 등록.
+- [x] **KCDSA**(`crypto/fipsmodule/kcdsa/kcdsa.cc.inc`, `include/openssl/kcdsa.h`): 도메인 파라미터(P/Q/G), 키생성(y=G^{x^{-1} mod Q} mod P), 서명/검증. BoringSSL BIGNUM 재사용, 해시 SHA-224/256. Rust `boring/src/kcdsa.rs` + KISA 참조구현 교차검증 KAT(P=2048,Q=224,SHA-224).
+- [x] **EC-KCDSA**(`crypto/fipsmodule/eckcdsa/eckcdsa.cc.inc`, `include/openssl/eckcdsa.h`): 기존 `ec`/`bn` 인프라 재사용(NIST P-224/P-256), 공개키 Q=d^{-1}·G. Rust `boring/src/eckcdsa.rs` + KISA 참조구현 교차검증 KAT(P-224/SHA-224).
+- [ ] (후속) `EVP_PKEY` 통합: 현재는 DRBG/KBKDF와 동일하게 독립 함수 API로 노출. 필요 시 `EVP_PKEY_KCDSA` 타입 등록.
+- [ ] (후속) 키쌍 일치시험(PCT)을 키생성 시 추가(조건부 자가시험 요구).
+- [ ] (후속) NID/OID 등록 및 SHA-256/P-256 추가 KAT.
 
 ### Phase 5 — KDF (KBKDF)
 - [ ] **KBKDF**(SP800-108, Counter/Feedback 모드, HMAC·CMAC 기반): `crypto/fipsmodule/kdf/kbkdf.cc.inc` 신규.
@@ -167,10 +167,10 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 
 ## 6. 권장 진행 순서 (마일스톤)
 
-1. **M1**: Phase 0 + ARIA(전 모드) + KAT + Rust 노출 — *수직 슬라이스로 전 파이프라인 검증*.
-2. **M2**: SEED·LEA·HIGHT, LSH·SHA-3.
-3. **M3**: Hash/HMAC_DRBG, CMAC/GMAC 확장, KBKDF.
-4. **M4**: KCDSA·EC-KCDSA + PCT.
+1. **M1** ✅: Phase 0 + ARIA(전 모드) + KAT + Rust 노출 — *수직 슬라이스로 전 파이프라인 검증*.
+2. **M2** ✅: SEED·LEA·HIGHT, LSH·SHA-3.
+3. **M3** ✅: Hash/HMAC_DRBG, KBKDF (CMAC/GMAC는 기존 보유).
+4. **M4** ✅(코어): KCDSA·EC-KCDSA 서명/검증 + KISA 참조 교차검증 KAT. (PCT/EVP_PKEY 통합은 후속.)
 5. **M5**: 자가시험/무결성/승인모드 완성, 보안정책서, 시험기관 제출 산출물.
 
 > M1을 먼저 끝내 빌드→경계→자가시험→Rust 노출의 전 과정을 한 알고리즘으로 검증한 뒤 나머지를 수평 확장하는 것을 강력 권장.
