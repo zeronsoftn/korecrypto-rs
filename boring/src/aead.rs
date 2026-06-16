@@ -110,6 +110,27 @@ impl Algorithm {
         unsafe { Self(ffi::EVP_aead_xchacha20_poly1305()) }
     }
 
+    /// ARIA-128 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_aria_128_ccm)]
+    #[must_use]
+    pub fn aria_128_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_aria_128_ccm()) }
+    }
+
+    /// ARIA-192 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_aria_192_ccm)]
+    #[must_use]
+    pub fn aria_192_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_aria_192_ccm()) }
+    }
+
+    /// ARIA-256 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_aria_256_ccm)]
+    #[must_use]
+    pub fn aria_256_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_aria_256_ccm()) }
+    }
+
     /// Returns the key length, in bytes, required by this algorithm.
     #[corresponds(EVP_AEAD_key_length)]
     #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -419,6 +440,46 @@ impl AeadCtxRef {
 #[cfg(test)]
 mod tests {
     use super::{AeadCtx, Algorithm};
+    use hex::FromHex;
+
+    // ARIA-CCM KAT from OpenSSL's evpciph_aria.txt (M=16, L=3, 12-byte nonce).
+    #[test]
+    fn aria_ccm_kat() {
+        let key = Vec::from_hex("974bee725d44fc3992267b284c3c6750").unwrap();
+        let nonce = Vec::from_hex("000020e8f5eb00000000315e").unwrap();
+        let aad = Vec::from_hex("8008315ebf2e6fe020e8f5eb").unwrap();
+        let pt = Vec::from_hex("f57af5fd4ae19562976ec57a5a7ad55a5af5c5e5c5fdf5c55ad57a4a7272d57262e9729566ed66e97ac54a4a5a7ad5e15ae5fdd5fd5ac5d56ae56ad5c572d54ae54ac55a956afd6aed5a4ac562957a9516991691d572fd14e97ae962ed7a9f4a955af572e162f57a956666e17ae1f54a95f566d54a66e16e4afd6a9f7ae1c5c55ae5d56afde916c5e94a6ec56695e14afde1148416e94ad57ac5146ed59d1cc5").unwrap();
+        let expected_ct = Vec::from_hex("621e408a2e455505b39f704dcbac4307daabbd6d670abc4e42f2fd2fca263f094f4683e6fb0b10c5093d42b69dce0ba546520e7c4400975713f3bde93ef131160b9cbcd6df78a1502be7c6ea8d395b9ed0078819c3105c0ab92cb67b16ba51bb1f53508738bf7a37c9a905439b88b7af9d51a407916fdfea8d43bf253721846dc1671391225fc58d9d0693c8ade6a4ffb034ee6543dd4e651b7a084eae60f855").unwrap();
+        let expected_tag = Vec::from_hex("40f04b6467e300f6b336aedf9df4185b").unwrap();
+
+        let algorithm = Algorithm::aria_128_ccm();
+        let ctx = AeadCtx::new(&algorithm, &key, 16).unwrap();
+
+        // Seal in place and verify ciphertext + detached tag against the KAT.
+        let mut buffer = pt.clone();
+        let mut tag = [0u8; 16];
+        let tag_written = ctx
+            .seal_in_place(&nonce, buffer.as_mut_slice(), &mut tag, &aad)
+            .unwrap();
+        assert_eq!(buffer, expected_ct, "ARIA-CCM ciphertext mismatch");
+        assert_eq!(tag_written, &expected_tag[..], "ARIA-CCM tag mismatch");
+
+        // Open the KAT ciphertext and recover the plaintext.
+        let mut ct = expected_ct.clone();
+        ctx.open_in_place(&nonce, ct.as_mut_slice(), &expected_tag, &aad)
+            .unwrap();
+        assert_eq!(ct, pt, "ARIA-CCM decrypt mismatch");
+
+        // A corrupted tag must fail authentication.
+        let mut ct2 = expected_ct.clone();
+        let mut bad_tag = expected_tag.clone();
+        bad_tag[0] ^= 0x01;
+        assert!(
+            ctx.open_in_place(&nonce, ct2.as_mut_slice(), &bad_tag, &aad)
+                .is_err(),
+            "ARIA-CCM accepted a forged tag"
+        );
+    }
 
     #[test]
     fn in_out() {
