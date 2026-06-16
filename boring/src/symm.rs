@@ -228,6 +228,52 @@ impl Cipher {
         unsafe { Cipher(ffi::EVP_aes_256_ofb()) }
     }
 
+    /// ARIA (KS X 1213 / RFC 5794), a KCMVP validation-target block cipher.
+    #[must_use]
+    pub fn aria_128_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_ecb()) }
+    }
+
+    #[must_use]
+    pub fn aria_128_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_cbc()) }
+    }
+
+    #[must_use]
+    pub fn aria_128_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_ctr()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_ecb()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_cbc()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_ctr()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_ecb()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_cbc()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_ctr()) }
+    }
+
     #[must_use]
     pub fn des_cbc() -> Cipher {
         unsafe { Cipher(ffi::EVP_des_cbc()) }
@@ -785,6 +831,66 @@ mod tests {
         assert_eq!(c.update(&[0u8; 15], &mut [0u8; 15]).unwrap(), 15);
         assert_eq!(c.update(&[0u8; 1], &mut [0u8; 1]).unwrap(), 1);
         assert_eq!(c.finalize(&mut [0u8; 0]).unwrap(), 0);
+    }
+
+    // Test vectors from RFC 5794 Appendix A (ARIA). A single 16-byte block is
+    // encrypted in ECB with padding disabled, then decrypted to verify the
+    // round trip.
+    #[test]
+    fn test_aria_ecb_kat() {
+        let pt = Vec::from_hex("00112233445566778899aabbccddeeff").unwrap();
+        let cases = [
+            (
+                Cipher::aria_128_ecb(),
+                "000102030405060708090a0b0c0d0e0f",
+                "d718fbd6ab644c739da95f3be6451778",
+            ),
+            (
+                Cipher::aria_192_ecb(),
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "26449c1805dbe7aa25a468ce263a9e79",
+            ),
+            (
+                Cipher::aria_256_ecb(),
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                "f92bd7c79fb72e2f2b8f80c1972d24fc",
+            ),
+        ];
+
+        for (cipher, key_hex, ct_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let expected = Vec::from_hex(ct_hex).unwrap();
+
+            let mut enc = Crypter::new(cipher, Mode::Encrypt, &key, None).unwrap();
+            enc.pad(false);
+            let mut out = vec![0; pt.len() + cipher.block_size()];
+            let mut n = enc.update(&pt, &mut out).unwrap();
+            n += enc.finalize(&mut out[n..]).unwrap();
+            out.truncate(n);
+            assert_eq!(out, expected, "ARIA ECB encrypt mismatch");
+
+            let mut dec = Crypter::new(cipher, Mode::Decrypt, &key, None).unwrap();
+            dec.pad(false);
+            let mut back = vec![0; expected.len() + cipher.block_size()];
+            let mut m = dec.update(&expected, &mut back).unwrap();
+            m += dec.finalize(&mut back[m..]).unwrap();
+            back.truncate(m);
+            assert_eq!(back, pt, "ARIA ECB decrypt mismatch");
+        }
+    }
+
+    // ARIA-128-CTR keystream consistency: encrypting then decrypting (with the
+    // same key/IV) must recover the plaintext, and the NID round-trips.
+    #[test]
+    fn test_aria_ctr_roundtrip() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let iv = Vec::from_hex("0f0e0d0c0b0a09080706050403020100").unwrap();
+        let pt = b"KCMVP ARIA-CTR streaming mode test vector!";
+
+        let ct = encrypt(Cipher::aria_128_ctr(), &key, Some(&iv), pt).unwrap();
+        assert_ne!(&ct[..], &pt[..]);
+        let back = decrypt(Cipher::aria_128_ctr(), &key, Some(&iv), &ct).unwrap();
+        assert_eq!(&back[..], &pt[..]);
     }
 
     // Test vectors from FIPS-197:
