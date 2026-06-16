@@ -1,8 +1,8 @@
 use crate::cache::{SessionCache, SessionKey};
 use crate::{key_index, HttpsLayerSettings, MaybeHttpsStream};
 use antidote::Mutex;
-use boring::error::ErrorStack;
-use boring::ssl::{
+use korecrypto::error::ErrorStack;
+use korecrypto::ssl::{
     ConnectConfiguration, Ssl, SslConnector, SslConnectorBuilder, SslMethod, SslRef,
     SslSessionCacheMode,
 };
@@ -261,7 +261,7 @@ where
             }
 
             let ssl = inner.setup_ssl(&uri, host)?;
-            let stream = tokio_boring::SslStreamBuilder::new(ssl, conn)
+            let stream = tokio_korecrypto::SslStreamBuilder::new(ssl, conn)
                 .connect()
                 .await?;
 

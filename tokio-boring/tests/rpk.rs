@@ -1,7 +1,7 @@
 #![cfg(feature = "rpk")]
 
-use boring::pkey::PKey;
-use boring::ssl::{
+use korecrypto::pkey::PKey;
+use korecrypto::ssl::{
     CertificateType, SslAcceptor, SslAlert, SslConnector, SslCredential, SslMethod, SslVerifyError,
     SslVerifyMode,
 };
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_boring::{HandshakeError, SslStream};
+use tokio_korecrypto::{HandshakeError, SslStream};
 
 fn create_server() -> (
     impl Future<Output = Result<SslStream<TcpStream>, HandshakeError<TcpStream>>>,
@@ -47,7 +47,7 @@ fn create_server() -> (
 
         let stream = listener.accept().await.unwrap().0;
 
-        tokio_boring::accept(&acceptor, stream).await
+        tokio_korecrypto::accept(&acceptor, stream).await
     };
 
     (server, addr)
@@ -84,7 +84,7 @@ async fn connect(
 
     let config = connector.build().configure().unwrap();
 
-    tokio_boring::connect(
+    tokio_korecrypto::connect(
         config,
         "localhost",
         TcpStream::connect(&addr).await.unwrap(),

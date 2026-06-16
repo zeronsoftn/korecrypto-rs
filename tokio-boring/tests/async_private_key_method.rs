@@ -1,11 +1,13 @@
-use boring::hash::MessageDigest;
-use boring::pkey::PKey;
-use boring::rsa::Padding;
-use boring::sign::{RsaPssSaltlen, Signer};
-use boring::ssl::{SslRef, SslSignatureAlgorithm};
+use korecrypto::hash::MessageDigest;
+use korecrypto::pkey::PKey;
+use korecrypto::rsa::Padding;
+use korecrypto::sign::{RsaPssSaltlen, Signer};
+use korecrypto::ssl::{SslRef, SslSignatureAlgorithm};
 use futures::future;
 use tokio::task::yield_now;
-use tokio_boring::{AsyncPrivateKeyMethod, AsyncPrivateKeyMethodError, BoxPrivateKeyMethodFuture};
+use tokio_korecrypto::{
+    AsyncPrivateKeyMethod, AsyncPrivateKeyMethodError, BoxPrivateKeyMethodFuture,
+};
 
 mod common;
 

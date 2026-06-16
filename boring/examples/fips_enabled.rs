@@ -1,3 +1,6 @@
 fn main() {
-    println!("boring::fips::enabled(): {}", boring::fips::enabled());
+    println!(
+        "korecrypto::fips::enabled(): {}",
+        korecrypto::fips::enabled()
+    );
 }

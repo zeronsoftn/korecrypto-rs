@@ -1,7 +1,7 @@
-use boring::ssl::ClientHello;
+use korecrypto::ssl::ClientHello;
 use futures::future;
 use tokio::task::yield_now;
-use tokio_boring::{AsyncSelectCertError, BoxSelectCertFinish, BoxSelectCertFuture};
+use tokio_korecrypto::{AsyncSelectCertError, BoxSelectCertFinish, BoxSelectCertFuture};
 
 mod common;
 

@@ -1,6 +1,6 @@
 # boring
 
-[![crates.io](https://img.shields.io/crates/v/boring.svg)](https://crates.io/crates/boring)
+[![crates.io](https://img.shields.io/crates/v/boring.svg)](https://crates.io/crates/korecrypto)
 
 [BoringSSL](https://boringssl.googlesource.com/boringssl) is Google's fork of OpenSSL for Chrome/Chromium and Android.
 
@@ -12,10 +12,10 @@ as well as [Post-Quantum crypto](https://datatracker.ietf.org/doc/draft-ietf-tls
 and [Raw Public Key](https://docs.rs/boring/latest/boring/ssl/struct.SslRef.html#method.peer_pubkey) extensions.
 
 ## Documentation
- - Boring API: <https://docs.rs/boring>
- - tokio TLS adapters: <https://docs.rs/tokio-boring>
- - hyper HTTPS connector: <https://docs.rs/hyper-boring>
- - FFI bindings: <https://docs.rs/boring-sys>
+ - Boring API: <https://docs.rs/korecrypto>
+ - tokio TLS adapters: <https://docs.rs/tokio-korecrypto>
+ - hyper HTTPS connector: <https://docs.rs/hyper-korecrypto>
+ - FFI bindings: <https://docs.rs/korecrypto-sys>
 
 # Upgrading from `boring` v4
 

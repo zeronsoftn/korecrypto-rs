@@ -1,5 +1,5 @@
 [package]
-name = "boring-sys"
+name = "korecrypto-sys"
 version = { workspace = true }
 authors = ["Alex Crichton <alex@alexcrichton.com>",
            "Steven Fackler <sfackler@gmail.com>",
@@ -7,7 +7,7 @@ authors = ["Alex Crichton <alex@alexcrichton.com>",
 license = "MIT"
 description = "FFI bindings to BoringSSL"
 repository = { workspace = true }
-documentation = "https://docs.rs/boring-sys"
+documentation = "https://docs.rs/korecrypto-sys"
 links = "boringssl"
 build = "build/main.rs"
 readme = "README.md"

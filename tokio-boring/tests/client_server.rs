@@ -1,4 +1,4 @@
-use boring::ssl::{SslConnector, SslMethod};
+use korecrypto::ssl::{SslConnector, SslMethod};
 use futures::future;
 use std::net::ToSocketAddrs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -18,7 +18,7 @@ async fn google() {
         .build()
         .configure()
         .unwrap();
-    let mut stream = tokio_boring::connect(config, "google.com", stream)
+    let mut stream = tokio_korecrypto::connect(config, "google.com", stream)
         .await
         .unwrap();
 

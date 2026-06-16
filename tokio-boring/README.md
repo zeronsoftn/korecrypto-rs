@@ -1,8 +1,8 @@
-# tokio-boring
+# tokio-korecrypto
 
 An implementation of SSL streams for Tokio built on top of the BoringSSL.
 
-[Documentation](https://docs.rs/tokio-boring)
+[Documentation](https://docs.rs/tokio-korecrypto)
 
 ## Usage
 
@@ -10,13 +10,13 @@ First, add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tokio-boring = "1.0.0"
+tokio-korecrypto = "1.0.0"
 ```
 
 Then, use either `accept` or `connect` as appropriate.
 
 ```rust
-use boring::ssl;
+use korecrypto::ssl;
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -25,11 +25,11 @@ async fn main() -> anyhow::Result<()> {
     let (tcp_stream, _addr) = listener.accept().await?;
 
     let server = ssl::SslMethod::tls_server();
-    let mut ssl_builder = boring::ssl::SslAcceptor::mozilla_modern(server)?;
+    let mut ssl_builder = korecrypto::ssl::SslAcceptor::mozilla_modern(server)?;
     ssl_builder.set_default_verify_paths()?;
     ssl_builder.set_verify(ssl::SslVerifyMode::PEER);
     let acceptor = ssl_builder.build();
-    let _ssl_stream = tokio_boring::accept(&acceptor, tcp_stream).await?;
+    let _ssl_stream = tokio_korecrypto::accept(&acceptor, tcp_stream).await?;
     Ok(())
 }
 ```
@@ -40,10 +40,10 @@ negotiating the connection. Each TLS stream implements the `Read` and
 ecosystem. Client connections initiated from this crate verify hostnames
 automatically and by default.
 
-`tokio-boring` exports this ability through [`accept`] and [`connect`]. `accept` should
+`tokio-korecrypto` exports this ability through [`accept`] and [`connect`]. `accept` should
 be used by servers, and `connect` by clients. These augment the functionality provided by the
-[`boring`] crate, on which this crate is built. Configuration of TLS parameters is still
-primarily done through the [`boring`] crate.
+[`korecrypto`] crate, on which this crate is built. Configuration of TLS parameters is still
+primarily done through the [`korecrypto`] crate.
 
 # License
 

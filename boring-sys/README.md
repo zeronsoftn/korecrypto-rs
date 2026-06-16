@@ -5,9 +5,9 @@
 This crate builds the BoringSSL library (or optionally links a pre-built version) and generates FFI bindings for it.
 It supports [FIPS-compatible builds of BoringSSL](https://boringssl.googlesource.com/boringssl/+/master/crypto/fipsmodule/FIPS.md),
 as well as [Post-Quantum crypto](https://datatracker.ietf.org/doc/draft-ietf-tls-ecdhe-mlkem/)
-and [Raw Public Key](https://docs.rs/boring/latest/boring/ssl/struct.SslRef.html#method.peer_pubkey) extensions.
+and [Raw Public Key](https://docs.rs/korecrypto/latest/boring/ssl/struct.SslRef.html#method.peer_pubkey) extensions.
 
-To use BoringSSL from Rust, prefer the [higher-level safe API](https://docs.rs/boring).
+To use BoringSSL from Rust, prefer the [higher-level safe API](https://docs.rs/korecrypto).
 
 ## Contribution
 

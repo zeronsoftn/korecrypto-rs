@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use boring::error::ErrorStack;
-use boring::ssl::{
+use korecrypto::error::ErrorStack;
+use korecrypto::ssl::{
     SslAcceptor, SslAcceptorBuilder, SslConnector, SslConnectorBuilder, SslFiletype, SslMethod,
 };
 use futures::future::{self, Future};
@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_boring::{HandshakeError, SslStream};
+use tokio_korecrypto::{HandshakeError, SslStream};
 
 pub(crate) fn create_server(
     setup: impl FnOnce(&mut SslAcceptorBuilder),
@@ -24,7 +24,7 @@ pub(crate) fn create_server(
 
         let stream = listener.accept().await.unwrap().0;
 
-        tokio_boring::accept(&acceptor, stream).await
+        tokio_korecrypto::accept(&acceptor, stream).await
     };
 
     (server, addr)
@@ -65,7 +65,7 @@ pub(crate) async fn connect(
 
     let stream = TcpStream::connect(&addr).await.unwrap();
 
-    tokio_boring::connect(config, "localhost", stream).await
+    tokio_korecrypto::connect(config, "localhost", stream).await
 }
 
 pub(crate) fn create_connector(

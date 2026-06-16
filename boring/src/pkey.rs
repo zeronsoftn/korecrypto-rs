@@ -29,8 +29,8 @@
 //! Generate a 2048-bit RSA public/private key pair and print the public key.
 //!
 //! ```rust
-//! use boring::rsa::Rsa;
-//! use boring::pkey::PKey;
+//! use korecrypto::rsa::Rsa;
+//! use korecrypto::pkey::PKey;
 //! use std::str;
 //!
 //! let rsa = Rsa::generate(2048).unwrap();

@@ -778,7 +778,7 @@ impl Drop for CryptoBufferBuilder<'_> {
     fn drop(&mut self) {
         if !self.buffer.is_null() {
             unsafe {
-                boring_sys::CRYPTO_BUFFER_free(self.buffer);
+                korecrypto_sys::CRYPTO_BUFFER_free(self.buffer);
             }
         }
     }

@@ -116,7 +116,7 @@ use self::State::*;
 /// Calculate a hash in one go:
 ///
 /// ```
-/// use boring::hash::{hash, MessageDigest};
+/// use korecrypto::hash::{hash, MessageDigest};
 ///
 /// let data = b"\x42\xF4\x97\xE0";
 /// let spec = b"\x7c\x43\x0f\x17\x8a\xef\xdf\x14\x87\xfe\xe7\x14\x4e\x96\x41\xe2";
@@ -127,7 +127,7 @@ use self::State::*;
 /// Supply the input in chunks:
 ///
 /// ```
-/// use boring::hash::{Hasher, MessageDigest};
+/// use korecrypto::hash::{Hasher, MessageDigest};
 ///
 /// let data = [b"\x42\xF4", b"\x97\xE0"];
 /// let spec = b"\x7c\x43\x0f\x17\x8a\xef\xdf\x14\x87\xfe\xe7\x14\x4e\x96\x41\xe2";
