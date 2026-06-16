@@ -289,6 +289,67 @@ impl Cipher {
         unsafe { Cipher(ffi::EVP_aria_256_gcm()) }
     }
 
+    /// LEA (KS X 3246 / ISO 29192-2), a KCMVP validation-target block cipher.
+    #[must_use]
+    pub fn lea_128_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_ecb()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_cbc()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_ctr()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_gcm()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_ecb()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_cbc()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_ctr()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_gcm()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_ecb()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_cbc()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_ctr()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_gcm()) }
+    }
+
     #[must_use]
     pub fn des_cbc() -> Cipher {
         unsafe { Cipher(ffi::EVP_des_cbc()) }
@@ -979,6 +1040,96 @@ mod tests {
                 decrypt_aead(v.cipher, &key, Some(&iv), &aad, &expected_ct, &bad_tag).is_err(),
                 "ARIA-GCM accepted a forged tag"
             );
+        }
+    }
+
+    // LEA single-block KATs (generated from the KISA LEA reference for keys
+    // 00..0f / 00..17 / 00..1f and plaintext 10..1f). ECB with padding off.
+    #[test]
+    fn test_lea_ecb_kat() {
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f").unwrap();
+        let cases = [
+            (
+                Cipher::lea_128_ecb(),
+                "000102030405060708090a0b0c0d0e0f",
+                "44ab24c48c1eb0f6e28b2ddd66525d50",
+            ),
+            (
+                Cipher::lea_192_ecb(),
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "e3c74acbabb94bc60299e405266c45e8",
+            ),
+            (
+                Cipher::lea_256_ecb(),
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                "a28c0d3ceb36bced9c8aa4963bf86eaa",
+            ),
+        ];
+
+        for (cipher, key_hex, ct_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let expected = Vec::from_hex(ct_hex).unwrap();
+
+            let mut enc = Crypter::new(cipher, Mode::Encrypt, &key, None).unwrap();
+            enc.pad(false);
+            let mut out = vec![0; pt.len() + cipher.block_size()];
+            let mut n = enc.update(&pt, &mut out).unwrap();
+            n += enc.finalize(&mut out[n..]).unwrap();
+            out.truncate(n);
+            assert_eq!(out, expected, "LEA ECB encrypt mismatch");
+
+            let mut dec = Crypter::new(cipher, Mode::Decrypt, &key, None).unwrap();
+            dec.pad(false);
+            let mut back = vec![0; expected.len() + cipher.block_size()];
+            let mut m = dec.update(&expected, &mut back).unwrap();
+            m += dec.finalize(&mut back[m..]).unwrap();
+            back.truncate(m);
+            assert_eq!(back, pt, "LEA ECB decrypt mismatch");
+        }
+    }
+
+    // LEA-GCM KATs (generated from the KISA LEA GCM reference).
+    #[test]
+    fn test_lea_gcm_kat() {
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let cases = [
+            (
+                Cipher::lea_128_gcm(),
+                "000102030405060708090a0b0c0d0e0f",
+                "4a817a5be960436f4742d9422ca50f190046cfc309b609a29bf999531aab0edf",
+                "38261b223eba708fb8e4150344cae824",
+            ),
+            (
+                Cipher::lea_256_gcm(),
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                "624ad1299fdbc3e7e9645e71df76f483dd530067feb20aa38093ddf803f5ea03",
+                "c4c2f17f155d7bfcd4ca6e360c74bb2a",
+            ),
+        ];
+
+        for (cipher, key_hex, ct_hex, tag_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let expected_ct = Vec::from_hex(ct_hex).unwrap();
+            let expected_tag = Vec::from_hex(tag_hex).unwrap();
+
+            let mut tag = vec![0u8; 16];
+            let ct = encrypt_aead(cipher, &key, Some(&nonce), &aad, &pt, &mut tag).unwrap();
+            assert_eq!(ct, expected_ct, "LEA-GCM ciphertext mismatch");
+            assert_eq!(tag, expected_tag, "LEA-GCM tag mismatch");
+
+            let dec = decrypt_aead(
+                cipher,
+                &key,
+                Some(&nonce),
+                &aad,
+                &expected_ct,
+                &expected_tag,
+            )
+            .unwrap();
+            assert_eq!(dec, pt, "LEA-GCM decrypt mismatch");
         }
     }
 

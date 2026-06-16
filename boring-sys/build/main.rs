@@ -775,6 +775,7 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
     let must_have_headers = [
         "aes.h",
         "aria.h",
+        "lea.h",
         "asn1_mac.h",
         "asn1t.h",
         "blake2.h",
