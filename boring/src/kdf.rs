@@ -78,6 +78,38 @@ pub fn kbkdf_hmac_feedback(
     }
 }
 
+/// Derives `out.len()` bytes using SP 800-108 double-pipeline mode and an HMAC
+/// PRF. `counter_bytes` 0 omits the counter (the no-counter variant).
+pub fn kbkdf_hmac_double_pipeline(
+    md: MessageDigest,
+    ki: &[u8],
+    counter_bytes: u32,
+    label: &[u8],
+    context: &[u8],
+    out: &mut [u8],
+) -> Result<(), ErrorStack> {
+    crate::ffi::init();
+    let ret = unsafe {
+        ffi::KBKDF_hmac_double_pipeline(
+            md.as_ptr(),
+            ki.as_ptr(),
+            ki.len(),
+            counter_bytes,
+            label.as_ptr(),
+            label.len(),
+            context.as_ptr(),
+            context.len(),
+            out.as_mut_ptr(),
+            out.len(),
+        )
+    };
+    if ret == 1 {
+        Ok(())
+    } else {
+        Err(ErrorStack::get())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +172,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(ctr, fb);
+    }
+
+    // KISA KBKDF-HMAC-SHA256 double-pipeline (no counter) KAT.
+    #[test]
+    fn kbkdf_double_pipeline_kat() {
+        let ki = Vec::from_hex("5B8B2D635DD0C4AD991260FB86FCC986D09DA8E6FC7647CB4CD198EDE2557946")
+            .unwrap();
+        let label = Vec::from_hex("27D8367E6E744FA7D5DD7C2A6CF1EF019A91D927BCB02F4D0EA9AECFCFD61DE6A05ED21F2E4E770C10EC0E39F3483361F413A1E24DB4F86F3499BE05").unwrap();
+        let context = Vec::from_hex("00CBA3208EC6092EE387C34412E61D1060261D0FA7CB09FFF8AB29988448CE77BD5D945BB8B7E393D646BCB7A374B297FEB536717B60186705BD4B2F").unwrap();
+        let expected = Vec::from_hex("47B934EF3934AFB6158B51F68CD9481D3EB21B1AFFEB47F43D9C37EE11DAADB3A2C4475493C14266E083AFC522AD1C33FD0E33289C3D5CF920DF2B619E760501").unwrap();
+        let mut out = vec![0u8; expected.len()];
+        // counter_bytes = 0 → no-counter 변형.
+        kbkdf_hmac_double_pipeline(MessageDigest::sha256(), &ki, 0, &label, &context, &mut out)
+            .unwrap();
+        assert_eq!(out, expected, "KBKDF double-pipeline mismatch");
     }
 }
