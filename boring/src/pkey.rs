@@ -540,6 +540,112 @@ impl PKey<Public> {
 
 use crate::ffi::EVP_PKEY_up_ref;
 
+impl<T> PKeyRef<T> {
+    /// RSA-OAEP 로 암호화한다. OAEP 해시와 MGF1 해시는 |md| 를 쓰며, |label| 은
+    /// 라벨(빈 슬라이스면 빈 라벨). KCMVP RSAES 용.
+    #[allow(clippy::missing_safety_doc)]
+    pub fn rsa_oaep_encrypt(
+        &self,
+        md: crate::hash::MessageDigest,
+        label: &[u8],
+        from: &[u8],
+    ) -> Result<Vec<u8>, ErrorStack> {
+        unsafe { rsa_oaep_op(self.as_ptr(), md, label, from, true) }
+    }
+
+    /// RSA-OAEP 로 복호화한다(파라미터는 [`Self::rsa_oaep_encrypt`] 와 동일).
+    pub fn rsa_oaep_decrypt(
+        &self,
+        md: crate::hash::MessageDigest,
+        label: &[u8],
+        from: &[u8],
+    ) -> Result<Vec<u8>, ErrorStack> {
+        unsafe { rsa_oaep_op(self.as_ptr(), md, label, from, false) }
+    }
+}
+
+/// RSA-OAEP 암/복호 공통 EVP_PKEY_CTX 처리.
+unsafe fn rsa_oaep_op(
+    pkey: *mut ffi::EVP_PKEY,
+    md: crate::hash::MessageDigest,
+    label: &[u8],
+    from: &[u8],
+    encrypt: bool,
+) -> Result<Vec<u8>, ErrorStack> {
+    let ctx = ffi::EVP_PKEY_CTX_new(pkey, ptr::null_mut());
+    if ctx.is_null() {
+        return Err(ErrorStack::get());
+    }
+    let result = (|| -> Result<Vec<u8>, ErrorStack> {
+        let init = if encrypt {
+            ffi::EVP_PKEY_encrypt_init(ctx)
+        } else {
+            ffi::EVP_PKEY_decrypt_init(ctx)
+        };
+        cvt(init)?;
+        cvt(ffi::EVP_PKEY_CTX_set_rsa_padding(
+            ctx,
+            ffi::RSA_PKCS1_OAEP_PADDING,
+        ))?;
+        cvt(ffi::EVP_PKEY_CTX_set_rsa_oaep_md(ctx, md.as_ptr()))?;
+        cvt(ffi::EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, md.as_ptr()))?;
+        if !label.is_empty() {
+            // set0 은 라벨 버퍼 소유권을 가져가므로 OPENSSL_malloc 으로 복사한다.
+            let buf = ffi::OPENSSL_malloc(label.len()) as *mut u8;
+            if buf.is_null() {
+                return Err(ErrorStack::get());
+            }
+            ptr::copy_nonoverlapping(label.as_ptr(), buf, label.len());
+            if ffi::EVP_PKEY_CTX_set0_rsa_oaep_label(ctx, buf, label.len()) <= 0 {
+                ffi::OPENSSL_free(buf.cast());
+                return Err(ErrorStack::get());
+            }
+        }
+        let mut out_len = 0usize;
+        let probe = if encrypt {
+            ffi::EVP_PKEY_encrypt(
+                ctx,
+                ptr::null_mut(),
+                &mut out_len,
+                from.as_ptr(),
+                from.len(),
+            )
+        } else {
+            ffi::EVP_PKEY_decrypt(
+                ctx,
+                ptr::null_mut(),
+                &mut out_len,
+                from.as_ptr(),
+                from.len(),
+            )
+        };
+        cvt(probe)?;
+        let mut out = vec![0u8; out_len];
+        let run = if encrypt {
+            ffi::EVP_PKEY_encrypt(
+                ctx,
+                out.as_mut_ptr(),
+                &mut out_len,
+                from.as_ptr(),
+                from.len(),
+            )
+        } else {
+            ffi::EVP_PKEY_decrypt(
+                ctx,
+                out.as_mut_ptr(),
+                &mut out_len,
+                from.as_ptr(),
+                from.len(),
+            )
+        };
+        cvt(run)?;
+        out.truncate(out_len);
+        Ok(out)
+    })();
+    ffi::EVP_PKEY_CTX_free(ctx);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use hex::FromHex as _;
@@ -715,5 +821,23 @@ mod tests {
     #[test]
     fn test_generate_invalid_id() {
         assert!(PKey::generate(Id::from_raw(0)).is_err());
+    }
+
+    // RSA-OAEP(SHA-256) 암호화→복호화 왕복(KCMVP RSAES 경로).
+    #[test]
+    fn rsa_oaep_roundtrip() {
+        use crate::hash::MessageDigest;
+        use crate::rsa::Rsa;
+        let rsa = Rsa::generate(2048).unwrap();
+        let pkey = PKey::from_rsa(rsa).unwrap();
+        let msg = b"KCMVP RSAES-OAEP roundtrip message";
+        let ct = pkey
+            .rsa_oaep_encrypt(MessageDigest::sha256(), &[], msg)
+            .unwrap();
+        assert_ne!(ct, msg);
+        let pt = pkey
+            .rsa_oaep_decrypt(MessageDigest::sha256(), &[], &ct)
+            .unwrap();
+        assert_eq!(pt, msg);
     }
 }
