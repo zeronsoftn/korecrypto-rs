@@ -187,6 +187,40 @@ mod tests {
         assert!(!key.verify(MessageDigest::sha224(), &bad, &sig));
     }
 
+    // KISA KCDSA 참조구현(P=2048, Q=224, SHA-256 → |Q|<해시, R 절단) KAT.
+    #[test]
+    fn kcdsa_2048_224_sha256_kat() {
+        let p = Vec::from_hex(
+            "ae56067379daa9cc575c8b3c237597ccd406c48407d18b636bf9a17a2abbe8356d335f03116d40a9ca5335a0c15d7b42f1a67e660ecf7e16b427d1780c0cf4a567f9e549b061bc55d13227715ff5de4da6509bd4eeb5e09a9b362f2c9394f0205923bce5073811d19f3543c2abc4d1a2cc8b1c6dc6fb0f5d592c61faaa14246f650d5e89b24d0e5a3d870dabb36586cd371711af837ead83c2cce47957dfc8adea86da39b18ab1a5d84833e7b1e8923c24e00d7dbc76b0f747aceda161b6639c76d10684421cdefa667263c67088d66c4cdfb00c80db5f9772a8f7b0696106e0cf05515226b7159ce7ea4cf245e769e1aacd55e4699433e255dbf80eaa9fd15b",
+        )
+        .unwrap();
+        let q = Vec::from_hex("9b12c08eda8226de28dc6fa0c49ff7644e2054b54dd2da661ac27fd7").unwrap();
+        let g = Vec::from_hex(
+            "83b6515b1e7ae1ada6be1155727ee0f6af6273f95f9da043e48870ec2ff8ce2e5dc3d5c41b4592e071a839dfc66e90aff48c86ffd5a0ea00990e349f575fb03b1436fdb76892728531b0fd82a06a8cc27ffa304a9770a8171c7d8275a56981a3cb5366adaa6377b2d89352dbfe8b21ce48c93f15bcd62e6adbcfca5bb60c0db622540e2d6d4c3c6c5546bfa318555bbb105e117a5bae19aea3d54f604e2c86219ace18fc72d729f85d38985d2aa9568d195d57cc66ae4cf46489fb7a2936974d92bf6a6a72e804d49af4710a5ce4cfd4153fa83a688cd0c2f9c7cd96ea8b48fd306dd5d7236143a1d0c4ef0d1436e14f23c74342f2b6b6ee91247cfdc19284b3",
+        )
+        .unwrap();
+        let x = Vec::from_hex("24176717ba389415daa7046a42273584812250797a02d162d3c403a4").unwrap();
+        let k = Vec::from_hex("735d3354a302dee1a816fbf3e17ac66d13ea7453c6f5158d8472c014").unwrap();
+        let msg = Vec::from_hex(
+            "5468697320697320612074657374206d65737361676520666f72204b4344534120757361676521",
+        )
+        .unwrap();
+        let expected_r =
+            Vec::from_hex("4e6ab25397b131790f994a88239a68ece2db80f6b9b92dd675c053f5").unwrap();
+        let expected_s =
+            Vec::from_hex("96ae8785172df194730721a36f9202b12b6276bf4c3cd22a465881cc").unwrap();
+
+        let mut key = KcdsaKey::new().unwrap();
+        key.set_params(&p, &q, &g).unwrap();
+        key.set_private(&x).unwrap();
+        // SHA-256(32B) > |Q|(28B) → 절단.
+        let sig = key.sign(MessageDigest::sha256(), &msg, Some(&k)).unwrap();
+        let mut expected = expected_r.clone();
+        expected.extend_from_slice(&expected_s);
+        assert_eq!(sig, expected, "KCDSA q224/SHA-256 signature mismatch");
+        assert!(key.verify(MessageDigest::sha256(), &msg, &sig));
+    }
+
     // 내부 난수 사용 시 sign→verify 왕복.
     #[test]
     fn kcdsa_roundtrip_random_k() {

@@ -105,6 +105,7 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 - [x] 키 생성 + 키쌍 일치시험(PCT): `EC_KCDSA_KEY_generate`/`KCDSA_KEY_generate` — 무작위 개인키(BN_rand_range_ex) 생성 후 PCT(서명→검증) 수행, 실패 시 키 폐기. Rust `generate()`.
 - [x] 추가 KAT: EC-KCDSA P-256/SHA-256, KCDSA Q=256/SHA-256 (KISA 참조 교차검증). 키생성+PCT 왕복 시험.
 - [ ] (후속) `EVP_PKEY` 통합: 현재는 DRBG/KBKDF와 동일하게 독립 함수 API로 노출. 필요 시 `EVP_PKEY_KCDSA` 타입/`pkey_method`, ASN.1 인코딩, NID/OID 등록.
+- [보류] **EC-KCDSA/KCDSA CAVP(.rsp) 검증은 보류한다.** CAVP 시험셋이 요구하는 일부 항목이 현재 구현 범위를 벗어나기 때문이다: ① EC-KCDSA 이진체 곡선(B/K-233/283, BoringSSL이 GF(2ⁿ) 곡선 미지원), ② 곡선·해시 길이 불일치 조합(P-224+SHA-256 등, R 절단 분기 미구현), ③ KCDSA 도메인 파라미터 생성(KPG/SGT의 Seed/Count/J/h, TTAK/FIPS186 PQG 생성기 미구현). 소수체 P-224/256 의 SGT/SVT/PKV 및 KCDSA SVT 자체는 동작하나, 트랙 전체를 일관되게 마무리할 때까지 cavp-test 하네스에서 EC-KCDSA/KCDSA 분배를 비활성화(보류)한다.
 
 ### Phase 5 — KDF (KBKDF)
 - [x] **KBKDF**(SP800-108): `crypto/fipsmodule/kdf/kbkdf.cc.inc` — HMAC Counter/Feedback 모드. KISA 인코딩 준수. 검증: KISA KBKDF-HMAC-SHA256 벡터. (CMAC 기반·이중 파이프라인 모드는 후속.)

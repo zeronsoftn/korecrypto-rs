@@ -244,6 +244,39 @@ mod tests {
         assert!(key.verify(MessageDigest::sha256(), &msg, &sig));
     }
 
+    // KISA EC-KCDSA 참조구현(SECP224r1 / SHA-256, 곡선<해시 → R 절단) KAT.
+    #[test]
+    fn eckcdsa_p224_sha256_kat() {
+        let d = Vec::from_hex("ccdac13dc556fac174e935c311a07c2cd9868039fd4b4168722f7dab").unwrap();
+        let qx = Vec::from_hex("3239838cdd32883128f9dce63daf3070f1b504ed441704fa0cb6769c").unwrap();
+        let qy = Vec::from_hex("1cf46ebefc870c79734f2a451d5fb147761f4726eeabcd1de74ab7da").unwrap();
+        let k = Vec::from_hex("713270da3c377511007f6884a46ef7d591b7319b322333c0e72ebd53").unwrap();
+        let msg = Vec::from_hex(
+            "5468697320697320612073616d706c65206d65737361676520666f722045432d4b4344534120696d706c656d656e746174696f6e2076616c69646174696f6e2e",
+        )
+        .unwrap();
+        let expected_r =
+            Vec::from_hex("73e438a3ce887ea439b53afc9598020a00e506fcd3a25ccce6146265").unwrap();
+        let expected_s =
+            Vec::from_hex("249b4a8489e70ab40bc051d709d07926c26e56c93c007b5f7e42d4d2").unwrap();
+
+        let mut key = EcKcdsaKey::new(Nid::SECP224R1.as_raw()).unwrap();
+        key.set_private(&d).unwrap();
+        let (gx, gy) = key.public_coords().unwrap();
+        assert_eq!(gx, qx);
+        assert_eq!(gy, qy);
+
+        // SHA-256(32B) > 좌표(28B) → 절단 분기.
+        let sig = key.sign(MessageDigest::sha256(), &msg, Some(&k)).unwrap();
+        let mut expected = expected_r.clone();
+        expected.extend_from_slice(&expected_s);
+        assert_eq!(sig, expected, "P-224/SHA-256 signature mismatch");
+        assert!(key.verify(MessageDigest::sha256(), &msg, &sig));
+        let mut bad = msg.clone();
+        bad[0] ^= 1;
+        assert!(!key.verify(MessageDigest::sha256(), &bad, &sig));
+    }
+
     // 내부 난수 사용 시 sign→verify 왕복.
     #[test]
     fn eckcdsa_roundtrip_random_k() {
