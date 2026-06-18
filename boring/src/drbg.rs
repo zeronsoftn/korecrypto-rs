@@ -132,6 +132,86 @@ impl HmacDrbg {
     }
 }
 
+/// CTR_DRBG (SP 800-90A) 의 하부 블록암호.
+#[derive(Clone, Copy)]
+pub enum CtrDrbgCipher {
+    Aes = 0,
+    Aria = 1,
+    Lea = 2,
+    Seed = 3,
+    Hight = 4,
+}
+
+/// 구성 가능한 CTR_DRBG (SP 800-90A). BoringSSL 기본 CTR_DRBG(AES-256)와 달리
+/// 블록암호·키 길이·df 를 지정할 수 있다(KCMVP 검증대상).
+pub struct CtrDrbg(*mut ffi::CTR_DRBG_STATE);
+
+unsafe impl Send for CtrDrbg {}
+
+impl CtrDrbg {
+    /// `cipher`/`keylen`(바이트)/`use_df` 로 인스턴스화한다. no-df 일 때
+    /// `entropy` 길이는 seedlen(=keylen+blocklen) 과 같아야 한다.
+    pub fn new(
+        cipher: CtrDrbgCipher,
+        keylen: usize,
+        use_df: bool,
+        entropy: &[u8],
+        nonce: &[u8],
+        perso: &[u8],
+    ) -> Result<Self, ErrorStack> {
+        crate::ffi::init();
+        let (np, nl) = opt(nonce);
+        let (pp, pl) = opt(perso);
+        let ptr = unsafe {
+            ffi::CTR_DRBG_new_ex(
+                cipher as i32,
+                keylen,
+                use_df as i32,
+                entropy.as_ptr(),
+                entropy.len(),
+                np,
+                nl,
+                pp,
+                pl,
+            )
+        };
+        if ptr.is_null() {
+            Err(ErrorStack::get())
+        } else {
+            Ok(CtrDrbg(ptr))
+        }
+    }
+
+    /// 새 엔트로피와 선택적 추가입력으로 재시드한다.
+    pub fn reseed(&mut self, entropy: &[u8], addtl: &[u8]) -> Result<(), ErrorStack> {
+        let (ap, al) = opt(addtl);
+        let ok =
+            unsafe { ffi::CTR_DRBG_reseed_ex(self.0, entropy.as_ptr(), entropy.len(), ap, al) };
+        if ok == 1 {
+            Ok(())
+        } else {
+            Err(ErrorStack::get())
+        }
+    }
+
+    /// `out` 을 의사난수로 채운다(선택적 추가입력).
+    pub fn generate(&mut self, out: &mut [u8], addtl: &[u8]) -> Result<(), ErrorStack> {
+        let (ap, al) = opt(addtl);
+        let ok = unsafe { ffi::CTR_DRBG_generate(self.0, out.as_mut_ptr(), out.len(), ap, al) };
+        if ok == 1 {
+            Ok(())
+        } else {
+            Err(ErrorStack::get())
+        }
+    }
+}
+
+impl Drop for CtrDrbg {
+    fn drop(&mut self) {
+        unsafe { ffi::CTR_DRBG_free(self.0) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
