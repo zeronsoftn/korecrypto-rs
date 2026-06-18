@@ -85,12 +85,121 @@ impl KcdsaKey {
             }
         }
     }
+
+    /// 비트 길이 `p_bits`(|P|), `q_bits`(|Q|)의 도메인 파라미터 (P,Q,G)를
+    /// TTAK.KO-12.0001 절차로 생성하여 key 에 설정하고, 생성 증거값을 반환한다.
+    /// `p_bits`는 2048..3072(256 배수), `q_bits`는 224 또는 256.
+    pub fn generate_parameters(
+        &mut self,
+        p_bits: usize,
+        q_bits: usize,
+    ) -> Result<KcdsaParamEvidence, ErrorStack> {
+        let mut seed = vec![0u8; q_bits / 8];
+        let mut seed_len = 0usize;
+        let mut count = 0u32;
+        let mut j = vec![0u8; p_bits / 8];
+        let mut j_len = 0usize;
+        let mut h = vec![0u8; p_bits / 8];
+        let mut h_len = 0usize;
+        unsafe {
+            if ffi::KCDSA_generate_parameters(
+                self.as_ptr(),
+                p_bits as i32,
+                q_bits as i32,
+                seed.as_mut_ptr(),
+                &mut seed_len,
+                &mut count,
+                j.as_mut_ptr(),
+                &mut j_len,
+                h.as_mut_ptr(),
+                &mut h_len,
+            ) == 1
+            {
+                seed.truncate(seed_len);
+                j.truncate(j_len);
+                h.truncate(h_len);
+                Ok(KcdsaParamEvidence { seed, count, j, h })
+            } else {
+                Err(ErrorStack::get())
+            }
+        }
+    }
+}
+
+/// KCDSA 도메인 파라미터 생성 시의 증거값(.rsp 출력용).
+pub struct KcdsaParamEvidence {
+    /// 증거 Seed (|Q|/8 바이트).
+    pub seed: Vec<u8>,
+    /// 소수 P,Q 를 찾은 Count 값.
+    pub count: u32,
+    /// 보조 소수 J (P = 2·J·Q + 1).
+    pub j: Vec<u8>,
+    /// 생성원 밑 h (G = h^{2J} mod P).
+    pub h: Vec<u8>,
 }
 
 impl KcdsaKeyRef {
     /// 서명 길이(2*|Q|바이트).
     pub fn sig_len(&self) -> usize {
         unsafe { ffi::KCDSA_sig_len(self.as_ptr()) }
+    }
+
+    /// 도메인 파라미터 (P, Q, G)를 빅엔디안으로 반환한다.
+    pub fn params(&self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), ErrorStack> {
+        let mut p = vec![0u8; 512];
+        let mut q = vec![0u8; 64];
+        let mut g = vec![0u8; 512];
+        let (mut pl, mut ql, mut gl) = (0usize, 0usize, 0usize);
+        unsafe {
+            if ffi::KCDSA_KEY_get_params(
+                self.as_ptr(),
+                p.as_mut_ptr(),
+                p.len(),
+                &mut pl,
+                q.as_mut_ptr(),
+                q.len(),
+                &mut ql,
+                g.as_mut_ptr(),
+                g.len(),
+                &mut gl,
+            ) == 1
+            {
+                p.truncate(pl);
+                q.truncate(ql);
+                g.truncate(gl);
+                Ok((p, q, g))
+            } else {
+                Err(ErrorStack::get())
+            }
+        }
+    }
+
+    /// 개인키 x 를 빅엔디안으로 반환한다.
+    pub fn private_key(&self) -> Result<Vec<u8>, ErrorStack> {
+        let mut x = vec![0u8; 64];
+        let mut xl = 0usize;
+        unsafe {
+            if ffi::KCDSA_KEY_get_private(self.as_ptr(), x.as_mut_ptr(), x.len(), &mut xl) == 1 {
+                x.truncate(xl);
+                Ok(x)
+            } else {
+                Err(ErrorStack::get())
+            }
+        }
+    }
+
+    /// 공개키 y 를 빅엔디안으로 반환한다.
+    pub fn public_key(&self) -> Result<Vec<u8>, ErrorStack> {
+        let mut y = vec![0u8; 512];
+        let mut yl = 0usize;
+        unsafe {
+            if ffi::KCDSA_KEY_get_public(self.as_ptr(), y.as_mut_ptr(), y.len(), &mut yl) == 1 {
+                y.truncate(yl);
+                Ok(y)
+            } else {
+                Err(ErrorStack::get())
+            }
+        }
     }
 
     /// `msg` 에 서명한다. `k` 가 `Some` 이면 그 난수(빅엔디안)를 사용하고,

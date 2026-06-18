@@ -101,11 +101,13 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 
 ### Phase 4 — 전자서명 (KCDSA, EC-KCDSA)
 - [x] **KCDSA**(`crypto/fipsmodule/kcdsa/kcdsa.cc.inc`, `include/openssl/kcdsa.h`): 도메인 파라미터(P/Q/G), 키생성(y=G^{x^{-1} mod Q} mod P), 서명/검증. BoringSSL BIGNUM 재사용, 해시 SHA-224/256. Rust `boring/src/kcdsa.rs` + KISA 참조구현 교차검증 KAT(P=2048,Q=224,SHA-224).
+- [x] **KCDSA 도메인 파라미터 생성(PQG)**: `KCDSA_generate_parameters`(+`kcdsa_ppgf`) — TTAK.KO-12.0001 절차로 Seed→J→Q→P(=2JQ+1) 소수쌍·생성원 G=h^{2J} mod P 생성, 증거값 Seed/Count/J/h 반환. P/Q/G·x getter 추가. Rust `generate_parameters`/`params`/`private_key`/`public_key`. PPGF 는 공식 KCDSA 샘플(samples/cavp/KCDSA)의 J/Q/P 와 일치 검증.
 - [x] **EC-KCDSA**(`crypto/fipsmodule/eckcdsa/eckcdsa.cc.inc`, `include/openssl/eckcdsa.h`): 기존 `ec`/`bn` 인프라 재사용(NIST P-224/P-256), 공개키 Q=d^{-1}·G. Rust `boring/src/eckcdsa.rs` + KISA 참조구현 교차검증 KAT(P-224/SHA-224).
 - [x] 키 생성 + 키쌍 일치시험(PCT): `EC_KCDSA_KEY_generate`/`KCDSA_KEY_generate` — 무작위 개인키(BN_rand_range_ex) 생성 후 PCT(서명→검증) 수행, 실패 시 키 폐기. Rust `generate()`.
 - [x] 추가 KAT: EC-KCDSA P-256/SHA-256, KCDSA Q=256/SHA-256 (KISA 참조 교차검증). 키생성+PCT 왕복 시험.
 - [ ] (후속) `EVP_PKEY` 통합: 현재는 DRBG/KBKDF와 동일하게 독립 함수 API로 노출. 필요 시 `EVP_PKEY_KCDSA` 타입/`pkey_method`, ASN.1 인코딩, NID/OID 등록.
-- [보류] **EC-KCDSA/KCDSA CAVP(.rsp) 검증은 보류한다.** CAVP 시험셋이 요구하는 일부 항목이 현재 구현 범위를 벗어나기 때문이다: ① EC-KCDSA 이진체 곡선(B/K-233/283, BoringSSL이 GF(2ⁿ) 곡선 미지원), ② 곡선·해시 길이 불일치 조합(P-224+SHA-256 등, R 절단 분기 미구현), ③ KCDSA 도메인 파라미터 생성(KPG/SGT의 Seed/Count/J/h, TTAK/FIPS186 PQG 생성기 미구현). 소수체 P-224/256 의 SGT/SVT/PKV 및 KCDSA SVT 자체는 동작하나, 트랙 전체를 일관되게 마무리할 때까지 cavp-test 하네스에서 EC-KCDSA/KCDSA 분배를 비활성화(보류)한다.
+- [x] **KCDSA CAVP(.rsp) 전 시험유형 동작**: KPG/SGT/SVT 모두 cavp-test 하네스에서 생성·검증된다. KPG/SGT 는 위 PQG 생성기로 도메인 파라미터+키쌍을 만들어 채운다. 검증 근거: 공식 검증시스템 문서(`samples/KCDSA_검증시스템.pdf`, KCDSAVS V3.0) §4.1·§5.2 에 따르면 KCDSAVS 는 X 를 시드로 재현하지 않고 (P,Q)소수·구조, G 위수, 0<X<Q, Y 일관성만 검사한다. DH PGT/PVT 도 같은 PQG/판정 로직으로 동작(`cavp-test/src/dh.rs`).
+- [보류] **EC-KCDSA CAVP 일부 보류**: ① 이진체 곡선(B/K-233/283, BoringSSL이 GF(2ⁿ) 곡선 미지원)은 미지원. 소수체 P-224/256 의 KPG/PKV/SGT/SVT(곡선≠해시 R 절단 포함)는 동작한다.
 
 ### Phase 5 — KDF (KBKDF)
 - [x] **KBKDF**(SP800-108): `crypto/fipsmodule/kdf/kbkdf.cc.inc` — HMAC Counter/Feedback 모드. KISA 인코딩 준수. 검증: KISA KBKDF-HMAC-SHA256 벡터. (CMAC 기반·이중 파이프라인 모드는 후속.)
