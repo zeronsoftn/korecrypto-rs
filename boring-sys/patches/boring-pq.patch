@@ -16,29 +16,8 @@ This patch adds:
    non post-quantum and a post-quantum keyshare if available.  These
    functions allow one to change the behaviour to only send a single
    keyshare.
----
- crypto/obj/obj_dat.h                |   6 +-
- crypto/obj/obj_mac.num              |   1 +
- crypto/obj/objects.txt              |   1 +
- include/openssl/nid.h               |   3 +
- include/openssl/ssl.h               |  15 ++++
- ssl/extensions.cc                   |  26 ++++---
- ssl/internal.h                      |  12 ++-
- ssl/ssl_key_share.cc                | 111 +++++++++++++++++++++++++++-
- ssl/ssl_lib.cc                      |  16 +++-
- ssl/ssl_test.cc                     |  24 +++++-
- ssl/test/runner/basic_tests.go      |   2 +
- ssl/test/runner/cbc_tests.go        |   3 +
- ssl/test/runner/common.go           |   2 +-
- ssl/test/runner/curve_tests.go      |  28 +++----
- ssl/test/runner/ech_tests.go        |  24 +++++-
- ssl/test/runner/extension_tests.go  |   3 +-
- ssl/test/runner/key_update_tests.go |   6 +-
- tool/client.cc                      |   9 +++
- 18 files changed, 249 insertions(+), 43 deletions(-)
-
 diff --git a/crypto/obj/obj_dat.h b/crypto/obj/obj_dat.h
-index feb8f2d1e..7ca28d9f5 100644
+index feb8f2d..7ca28d9 100644
 --- a/crypto/obj/obj_dat.h
 +++ b/crypto/obj/obj_dat.h
 @@ -16,7 +16,7 @@
@@ -76,7 +55,7 @@ index feb8f2d1e..7ca28d9f5 100644
      69 /* PBKDF2 */,
      162 /* PBMAC1 */,
 diff --git a/crypto/obj/obj_mac.num b/crypto/obj/obj_mac.num
-index 7b8bd2ead..dc7b2878f 100644
+index 7b8bd2e..dc7b287 100644
 --- a/crypto/obj/obj_mac.num
 +++ b/crypto/obj/obj_mac.num
 @@ -959,3 +959,4 @@ ML_DSA_65		968
@@ -85,7 +64,7 @@ index 7b8bd2ead..dc7b2878f 100644
  X_Wing		972
 +P256Kyber768Draft00		973
 diff --git a/crypto/obj/objects.txt b/crypto/obj/objects.txt
-index 67b9ade43..384b25753 100644
+index 67b9ade..384b257 100644
 --- a/crypto/obj/objects.txt
 +++ b/crypto/obj/objects.txt
 @@ -1340,6 +1340,7 @@ secg-scheme 14 3 : dhSinglePass-cofactorDH-sha512kdf-scheme
@@ -97,10 +76,10 @@ index 67b9ade43..384b25753 100644
  
  # NIDs for PQ/T hybrid KEMs (no corresponding OIDs).
 diff --git a/include/openssl/nid.h b/include/openssl/nid.h
-index 6b3bb4506..068fc5977 100644
+index 2dddf3a..26fa74f 100644
 --- a/include/openssl/nid.h
 +++ b/include/openssl/nid.h
-@@ -5511,6 +5511,9 @@ extern "C" {
+@@ -5606,6 +5606,9 @@ extern "C" {
  #define SN_X_Wing "X-Wing"
  #define NID_X_Wing 972
  
@@ -111,19 +90,19 @@ index 6b3bb4506..068fc5977 100644
  #if defined(__cplusplus)
  } /* extern C */
 diff --git a/include/openssl/ssl.h b/include/openssl/ssl.h
-index 055b3e025..09d6508f4 100644
+index 8c81152..7a52739 100644
 --- a/include/openssl/ssl.h
 +++ b/include/openssl/ssl.h
-@@ -2586,6 +2586,7 @@ OPENSSL_EXPORT size_t SSL_CTX_get_num_tickets(const SSL_CTX *ctx);
+@@ -2615,6 +2615,7 @@ OPENSSL_EXPORT size_t SSL_CTX_get_num_tickets(const SSL_CTX *ctx);
  #define SSL_GROUP_X25519_MLKEM768 0x11ec
  #define SSL_GROUP_X25519_KYBER768_DRAFT00 0x6399
  #define SSL_GROUP_MLKEM1024 0x0202
 +#define SSL_GROUP_P256_KYBER768_DRAFT00 0xfe32
  
- // SSL_CTX_set1_group_ids sets the preferred groups for |ctx| to |group_ids|.
- // Each element of |group_ids| should be a unique one of the |SSL_GROUP_*|
-@@ -6241,6 +6242,20 @@ OPENSSL_EXPORT int SSL_CTX_set1_curves_list(SSL_CTX *ctx, const char *curves);
- // SSL_set1_curves_list calls |SSL_set1_groups_list|.
+ // SSL_CTX_set1_group_ids sets the preferred groups for `ctx` to `group_ids`.
+ // Each element of `group_ids` should be a unique one of the `SSL_GROUP_*`
+@@ -6250,6 +6251,20 @@ OPENSSL_EXPORT int SSL_CTX_set1_curves_list(SSL_CTX *ctx, const char *curves);
+ // SSL_set1_curves_list calls `SSL_set1_groups_list`.
  OPENSSL_EXPORT int SSL_set1_curves_list(SSL *ssl, const char *curves);
  
 +// By default, a client will send both a non post-quantum and a post-quantum
@@ -141,10 +120,10 @@ index 055b3e025..09d6508f4 100644
 +OPENSSL_EXPORT void SSL_CTX_use_second_keyshare(SSL_CTX *ctx, int enabled);
 +
  // TLSEXT_nid_unknown is a constant used in OpenSSL for
- // |SSL_get_negotiated_group| to return an unrecognized group. BoringSSL never
+ // `SSL_get_negotiated_group` to return an unrecognized group. BoringSSL never
  // returns this value, but we define this constant for compatibility.
 diff --git a/ssl/extensions.cc b/ssl/extensions.cc
-index db1a29139..05c8c1e16 100644
+index a6c1f7c..8ea0756 100644
 --- a/ssl/extensions.cc
 +++ b/ssl/extensions.cc
 @@ -107,6 +107,7 @@ static bool tls1_check_duplicate_extensions(const CBS *cbs) {
@@ -155,7 +134,7 @@ index db1a29139..05c8c1e16 100644
      case SSL_GROUP_X25519_MLKEM768:
      case SSL_GROUP_MLKEM1024:
        return true;
-@@ -2418,18 +2419,21 @@ bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id) {
+@@ -2425,18 +2426,21 @@ bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id) {
      if (!default_key_shares.TryPushBack(supported_group_list[0])) {
        return false;
      }
@@ -189,10 +168,10 @@ index db1a29139..05c8c1e16 100644
      selected_key_shares.emplace(default_key_shares);
    }
 diff --git a/ssl/internal.h b/ssl/internal.h
-index 2bea8f62d..47b688bf4 100644
+index 5cd13e1..7e15b8a 100644
 --- a/ssl/internal.h
 +++ b/ssl/internal.h
-@@ -913,7 +913,7 @@ struct NamedGroup {
+@@ -914,7 +914,7 @@ struct NamedGroup {
  Span<const NamedGroup> NamedGroups();
  
  // kNumNamedGroups is the number of supported groups.
@@ -201,7 +180,7 @@ index 2bea8f62d..47b688bf4 100644
  
  // DefaultSupportedGroupIds returns the list of IDs for the default groups that
  // are supported when the caller hasn't explicitly configured supported groups.
-@@ -3531,6 +3531,11 @@ struct SSL_CONFIG {
+@@ -3522,6 +3522,11 @@ struct SSL_CONFIG {
    // permute_extensions is whether to permute extensions when sending messages.
    bool permute_extensions : 1;
  
@@ -213,7 +192,7 @@ index 2bea8f62d..47b688bf4 100644
    // aes_hw_override if set indicates we should override checking for aes
    // hardware support, and use the value in aes_hw_override_value instead.
    bool aes_hw_override : 1;
-@@ -4172,6 +4177,11 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
+@@ -4165,6 +4170,11 @@ class SSLContext : public ssl_ctx_st, public RefCounted<SSLContext> {
    // permute_extensions is whether to permute extensions when sending messages.
    bool permute_extensions : 1;
  
@@ -226,7 +205,7 @@ index 2bea8f62d..47b688bf4 100644
    // protocols from the peer.
    bool allow_unknown_alpn_protos : 1;
 diff --git a/ssl/ssl_key_share.cc b/ssl/ssl_key_share.cc
-index d155b5527..4fb08906b 100644
+index 5923110..a6fec6a 100644
 --- a/ssl/ssl_key_share.cc
 +++ b/ssl/ssl_key_share.cc
 @@ -193,6 +193,109 @@ class X25519KeyShare : public SSLKeyShare {
@@ -371,10 +350,10 @@ index d155b5527..4fb08906b 100644
        return nullptr;
    }
 diff --git a/ssl/ssl_lib.cc b/ssl/ssl_lib.cc
-index 89702eaaf..a7505841c 100644
+index f5f7df0..7b9a79a 100644
 --- a/ssl/ssl_lib.cc
 +++ b/ssl/ssl_lib.cc
-@@ -385,6 +385,7 @@ ssl_ctx_st::ssl_ctx_st(const SSL_METHOD *ssl_method)
+@@ -389,6 +389,7 @@ bssl::SSLContext::SSLContext(const SSL_METHOD *ssl_method)
        channel_id_enabled(false),
        grease_enabled(false),
        permute_extensions(false),
@@ -382,15 +361,15 @@ index 89702eaaf..a7505841c 100644
        allow_unknown_alpn_protos(false),
        false_start_allowed_without_alpn(false),
        handoff(false),
-@@ -517,6 +518,7 @@ SSL *SSL_new(SSL_CTX *ctx) {
+@@ -522,6 +523,7 @@ SSL *SSL_new(SSL_CTX *ctx) {
    ssl->config->retain_only_sha256_of_client_certs =
-       ctx->retain_only_sha256_of_client_certs;
-   ssl->config->permute_extensions = ctx->permute_extensions;
-+  ssl->config->disable_second_keyshare = ctx->disable_second_keyshare;
-   ssl->config->aes_hw_override = ctx->aes_hw_override;
-   ssl->config->aes_hw_override_value = ctx->aes_hw_override_value;
-   ssl->config->compliance_policy = ctx->compliance_policy;
-@@ -582,6 +584,7 @@ SSL_CONFIG::SSL_CONFIG(SSL *ssl_arg)
+       ctx_impl->retain_only_sha256_of_client_certs;
+   ssl->config->permute_extensions = ctx_impl->permute_extensions;
++  ssl->config->disable_second_keyshare = ctx_impl->disable_second_keyshare;
+   ssl->config->aes_hw_override = ctx_impl->aes_hw_override;
+   ssl->config->aes_hw_override_value = ctx_impl->aes_hw_override_value;
+   ssl->config->compliance_policy = ctx_impl->compliance_policy;
+@@ -587,6 +589,7 @@ SSL_CONFIG::SSL_CONFIG(SSL *ssl_arg)
        jdk11_workaround(false),
        quic_use_legacy_codepoint(false),
        permute_extensions(false),
@@ -398,23 +377,26 @@ index 89702eaaf..a7505841c 100644
        alps_use_new_codepoint(true),
        server_padding_enabled(false) {
    assert(ssl);
-@@ -3390,6 +3393,15 @@ int SSL_set1_curves_list(SSL *ssl, const char *curves) {
+@@ -3411,6 +3414,18 @@ int SSL_set1_curves_list(SSL *ssl, const char *curves) {
    return SSL_set1_groups_list(ssl, curves);
  }
  
 +void SSL_use_second_keyshare(SSL *ssl, int enabled) {
++  if (!ssl->config) {
++    return;
++  }
 +  ssl->config->disable_second_keyshare = !enabled;
 +}
 +
 +void SSL_CTX_use_second_keyshare(SSL_CTX *ctx, int enabled) {
-+  ctx->disable_second_keyshare = !enabled;
++  FromOpaque(ctx)->disable_second_keyshare = !enabled;
 +}
 +
 +
  namespace fips202205 {
  
  // (References are to SP 800-52r2):
-@@ -3401,7 +3413,9 @@ namespace fips202205 {
+@@ -3422,7 +3437,9 @@ namespace fips202205 {
  // Section 3.3.1
  // "The server shall be configured to only use cipher suites that are
  // composed entirely of NIST approved algorithms"
@@ -426,7 +408,7 @@ index 89702eaaf..a7505841c 100644
  static const uint16_t kSigAlgs[] = {
      SSL_SIGN_RSA_PKCS1_SHA256,
 diff --git a/ssl/ssl_test.cc b/ssl/ssl_test.cc
-index a91a6268c..3999ad61b 100644
+index 7b7ce71..f7f4725 100644
 --- a/ssl/ssl_test.cc
 +++ b/ssl/ssl_test.cc
 @@ -522,6 +522,14 @@ static const CurveTest kCurveTests[] = {
@@ -444,7 +426,7 @@ index a91a6268c..3999ad61b 100644
  
      {
          "P-256:P-384:P-521:X25519",
-@@ -683,7 +691,9 @@ TEST(SSLTest, CurveRules) {
+@@ -684,7 +692,9 @@ TEST(SSLTest, CurveRules) {
  }
  
  TEST(SSLTest, DefaultCurves) {
@@ -455,7 +437,7 @@ index a91a6268c..3999ad61b 100644
                                  SSL_GROUP_SECP384R1};
  
    // Test the group ID APIs.
-@@ -1643,6 +1653,9 @@ static bool GetClientHello(SSL *ssl, std::vector<uint8_t> *out) {
+@@ -1650,6 +1660,9 @@ static bool GetClientHello(SSL *ssl, std::vector<uint8_t> *out) {
  static size_t GetClientHelloLen(uint16_t max_version, uint16_t session_version,
                                  size_t ticket_len) {
    bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
@@ -465,7 +447,7 @@ index a91a6268c..3999ad61b 100644
    bssl::UniquePtr<SSL_SESSION> session =
        CreateSessionWithTicket(session_version, ticket_len);
    if (!ctx || !session) {
-@@ -2317,7 +2330,10 @@ TEST(SSLTest, SetGroupIdsWithEqualPreference) {
+@@ -2324,7 +2337,10 @@ TEST(SSLTest, SetGroupIdsWithEqualPreference) {
  // Test that the SSL group flags are defaulted to zero when zero groups are set
  // (i.e. using the default groups).
  TEST(SSLTest, SetGroupIdsWithFlags_DefaultGroups) {
@@ -477,7 +459,7 @@ index a91a6268c..3999ad61b 100644
                                       SSL_GROUP_SECP384R1};
    const uint32_t kBogusFlags[] = {SSL_GROUP_FLAG_EQUAL_PREFERENCE_WITH_NEXT,
                                    SSL_GROUP_FLAG_EQUAL_PREFERENCE_WITH_NEXT, 0};
-@@ -7112,7 +7128,9 @@ TEST(SSLTest, ApplyHandoffRemovesUnsupportedCurves) {
+@@ -7193,7 +7209,9 @@ TEST(SSLTest, ApplyHandoffRemovesUnsupportedCurves) {
  
    // The default list of groups is used before applying the handoff.
    EXPECT_THAT(server->config->supported_group_list,
@@ -489,7 +471,7 @@ index a91a6268c..3999ad61b 100644
    ASSERT_TRUE(SSL_apply_handoff(server.get(), handoff));
    EXPECT_EQ(1u, server->config->supported_group_list.size());
 diff --git a/ssl/test/runner/basic_tests.go b/ssl/test/runner/basic_tests.go
-index 54d49637b..5887c715a 100644
+index 54d4963..5887c71 100644
 --- a/ssl/test/runner/basic_tests.go
 +++ b/ssl/test/runner/basic_tests.go
 @@ -132,6 +132,7 @@ read alert 1 0
@@ -509,7 +491,7 @@ index 54d49637b..5887c715a 100644
  write hs 20
  read hs 20
 diff --git a/ssl/test/runner/cbc_tests.go b/ssl/test/runner/cbc_tests.go
-index 6f49d12af..5e970b2b5 100644
+index 6f49d12..5e970b2 100644
 --- a/ssl/test/runner/cbc_tests.go
 +++ b/ssl/test/runner/cbc_tests.go
 @@ -14,6 +14,8 @@
@@ -530,7 +512,7 @@ index 6f49d12af..5e970b2b5 100644
  		})
  	}
 diff --git a/ssl/test/runner/common.go b/ssl/test/runner/common.go
-index c241c418e..9ffafa248 100644
+index c5e3d6e..da8fc2b 100644
 --- a/ssl/test/runner/common.go
 +++ b/ssl/test/runner/common.go
 @@ -2186,7 +2186,7 @@ type ProtocolBugs struct {
@@ -543,7 +525,7 @@ index c241c418e..9ffafa248 100644
  
  	// ExpectKeyShares, if not nil, lists (in order) the curves that a ClientHello
 diff --git a/ssl/test/runner/curve_tests.go b/ssl/test/runner/curve_tests.go
-index 956a73203..d04a1531d 100644
+index 956a732..d04a153 100644
 --- a/ssl/test/runner/curve_tests.go
 +++ b/ssl/test/runner/curve_tests.go
 @@ -582,17 +582,6 @@ func addCurveTests() {
@@ -593,7 +575,7 @@ index 956a73203..d04a1531d 100644
  	})
  
 diff --git a/ssl/test/runner/ech_tests.go b/ssl/test/runner/ech_tests.go
-index 2cd3c10d3..f19d8d20a 100644
+index 2cd3c10..f19d8d2 100644
 --- a/ssl/test/runner/ech_tests.go
 +++ b/ssl/test/runner/ech_tests.go
 @@ -451,7 +451,8 @@ func addEncryptedClientHelloTests() {
@@ -642,7 +624,7 @@ index 2cd3c10d3..f19d8d20a 100644
  			clientAndServerHelloInitial += "write ccs\n"
  		}
 diff --git a/ssl/test/runner/extension_tests.go b/ssl/test/runner/extension_tests.go
-index ab9b0b02d..834da257f 100644
+index ab9b0b0..834da25 100644
 --- a/ssl/test/runner/extension_tests.go
 +++ b/ssl/test/runner/extension_tests.go
 @@ -16,6 +16,7 @@ package runner
@@ -663,7 +645,7 @@ index ab9b0b02d..834da257f 100644
  
  	// Test that illegal extensions in TLS 1.3 are rejected by the client if
 diff --git a/ssl/test/runner/key_update_tests.go b/ssl/test/runner/key_update_tests.go
-index f98528265..2068b1102 100644
+index f985282..2068b11 100644
 --- a/ssl/test/runner/key_update_tests.go
 +++ b/ssl/test/runner/key_update_tests.go
 @@ -14,7 +14,10 @@
@@ -687,7 +669,7 @@ index f98528265..2068b1102 100644
  
  	// Test that shim responds to KeyUpdate requests.
 diff --git a/tool/client.cc b/tool/client.cc
-index 1653af8da..cab725d40 100644
+index 1f2b199..6cf5554 100644
 --- a/tool/client.cc
 +++ b/tool/client.cc
 @@ -156,6 +156,11 @@ static const struct argument kArguments[] = {
@@ -713,6 +695,3 @@ index 1653af8da..cab725d40 100644
    // Configure accepted roots.
    if (args_map.count("-root-certs") != 0) {
      if (!SSL_CTX_load_verify_locations(
--- 
-2.50.1 (Apple Git-155)
-
