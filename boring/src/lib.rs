@@ -125,6 +125,7 @@ pub mod aes;
 pub mod asn1;
 pub mod base64;
 pub mod bn;
+pub mod cmac;
 pub mod conf;
 pub mod derive;
 pub mod dh;
