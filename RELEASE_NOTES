@@ -1,4 +1,8 @@
 5.2.0
+- 2026-06-16 `boring` -> korecrypto` 로 이름 변경.
+- 2026-06-16 fips-precompiled 삭제.
+
+5.2.0
 - 2026-05-21 Export `DEP_BORINGSSL_VERSION_MAJOR` var
 - 2026-04-27 Expose DTLS version constants in SslVersion
 

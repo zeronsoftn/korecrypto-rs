@@ -177,3 +177,118 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 
 > 현황 요약: M1~M4 완료. **모든 KCMVP 검증대상 알고리즘의 코어 구현 + Rust 노출 + KAT 완료**.
 > 남은 핵심은 M5(가동 전 자가시험 KAT 등록·무결성·승인모드·문서)와, 선택적 후속(EVP_PKEY 통합, DRBG 연속시험, KBKDF-CMAC, kcmvp feature 게이팅).
+
+---
+
+## 7. Windows 크로스컴파일 FIPS 빌드 지원 (clang, COFF) ✅
+
+목표: 리눅스 호스트에서 clang(`x86_64-w64-windows-gnu`)으로 **FIPS 모드 crypto 라이브러리**를 크로스컴파일. 진입점은 `boring-sys/deps/boringssl/Makefile` 의 `build-windows` 타깃 (`rm -rf build-windows && make build-windows`).
+
+핵심 난점: BoringSSL FIPS 무결성 인프라(`delocate`, `inject_hash`, 모듈 경계 심볼)가 **ELF/Mach-O 전용**이었음. 윈도우 대상은 **COFF/PE** 어셈블리(COMDAT `.text$`, `.rdata`, SEH, `.refptr`, `.def`)를 생성해 그대로는 처리 불가.
+
+수행한 작업:
+
+- **delocate COFF 포팅 + 파일 분리**: `util/fipstools/delocate/` 를 `delocate.go`(공통 + `objectFormat` 자동판별/디스패치), `delocate_elf.go`(기존 ELF/Mach-O 로직 그대로), `delocate_coff.go`(신규)로 분리. COFF 처리: `.text$*`/`.rdata`→`.text` 평탄화, 내부 전역참조→`.L..._local_target`(COMDAT 병합 방지), 외부 call/jmp→redirector 썽크(`jmp X` 또는 `jmp *__imp_X(%rip)`), 외부 주소적재(`leaq`)→모듈 밖 포인터(`bcm_external_X`), `.refptr.X`→직접 `leaq`. 결과: 해시 대상 영역 `[bcm_text_start, bcm_text_end)` 에 **재배치 0개** 보장(꼬리에만 재배치 존재).
+- **inject_hash COFF 포팅**: `debug/pe` 로 COFF 오브젝트 파싱(`hashModuleCOFF`). COFF 영역이 재배치-프리이므로 정적 오브젝트에서 직접 해시 계산(별도 링크 모듈 불필요).
+- **스레드 모델**: MinGW FIPS 빌드에서 winpthreads 의 `PTHREAD_RWLOCK_INITIALIZER == -1` 때문에 정적 락이 `.data` 로 배치되는 문제 → `OPENSSL_WINDOWS_THREADS`(SRWLOCK, 0초기화) 강제([crypto/internal.h]). 동반 수정: `WIN32_LEAN_AND_MEAN`(winsock 순서), `thread_win.cc` TLS 종료 콜백을 MinGW(`.CRT$XLC` section/used 속성)로 이식.
+- **소스 가드**: `bcm.cc`(sys/mman.h, PROT_* 매크로), 지터 엔트로피 소스(`entropy/jitter.cc.inc`, `entropy/internal.h`)를 윈도우에서 활성화(x86_64 는 `_rdtsc()` 사용).
+- **빌드 설정**: `Makefile build-windows` 에 `-DBUILD_TESTING=OFF`(크로스컴파일 시 benchmark configure 실패 회피), `-DOPENSSL_NO_ASM=1`(윈도우용 GAS-COFF perlasm 부재 + NASM 은 delocate 비호환 → 순수 C 구현 사용). 툴체인(`util/clang-toolchain.cmake`)에 ASM 타깃 추가. `CMakeLists.txt` FIPS_DELOCATE 경로에 COFF 분기(타깃 트리플로 판별).
+
+- **링크 가능성(COMDAT weak)**: delocate 가 COMDAT `.text$X,...,discard,X` 를 단일 `.text` 로 평탄화하면 인라인/템플릿 심볼이 강한 전역이 되어 다른 번역단위의 COMDAT 사본과 **중복 심볼** 충돌(실제 exe 링크 시 발생) → delocate_coff.go 에서 해당 심볼을 `.weak` 로 출력해 해결(원래 COMDAT dedup 의도 복원).
+
+검증(두 가지 독립 방법, `Makefile` 의 `make check-windows`):
+1. **wine 실행 테스트** (`test-windows`): `fipstest/fips_selftest.c` 를 `libcrypto.a` 와 정적 링크(`clang++ --target=... -static -static-libstdc++ -static-libgcc`)해 exe 생성 후 `wine` 실행 → bcm 생성자 무결성 검사 통과 + `BORINGSSL_integrity_test()==1` → `FIPS INTEGRITY: PASS`.
+2. **정적 해시 검사** (`verify-hash-windows`): `llvm-nm`/`llvm-objcopy` 로 `bcm.o` 의 text start/end/hash 와 `.text` 바이트를 뽑아 `HMAC-SHA256(키=0, text[start:end])` 를 재계산 → 주입된 해시와 **일치** 확인.
+
+그 외: `make build-windows` 성공 → `libcrypto.a`(COFF) 생성, `bcm.o` 해시 주입 완료, 해시영역 재배치 0개. ELF delocate 단위테스트 통과(기존 동작 보존).
+
+### 7.1 asm 최적화 활성화 (OPENSSL_NO_ASM 제거, asm 을 FIPS 모듈 안에) ✅
+
+`OPENSSL_NO_ASM` 을 제거하고 x86_64 asm 최적화를 켰다. 단, delocate 가 GAS 만
+파싱하므로(NASM/MASM/llvm-ml 불가) asm 은 perlasm 의 **mingw64**(GAS-COFF) flavour
+로 생성해 delocate 가 **FIPS 모듈(무결성 경계) 안에** 접어 넣도록 했다. clang 이
+GAS 를 조립하므로 llvm-ml 은 불필요.
+
+- **perlasm 되살리기** (`crypto/perlasm/x86_64-xlate.pl`): `die "mingw64 not supported"` 제거, win64 타깃 가드(`defined(_WIN32)`) 추가, 섹션 시작 asm-local 레이블 금지(die)를 macOS(`.subsections_via_symbols`) 전용으로 한정, mingw64 에서 ELF `.hidden` 출력 억제.
+- **SEH 핸들러 중복 해결**(COFF 전용 문제, **자동화됨**): COFF 는 함수마다 SEH unwind(`.pdata`/`.xdata`)와 예외 핸들러 함수가 필요한데, perlasm 이 파일별 static 핸들러를 generic 이름(`se_handler`, `mul_handler`, `sqr_handler` 등)으로 낸다. delocate 가 모듈 asm 을 하나로 병합하면 같은 이름이 충돌. 
+  - **원래 방법** (수동): `.pl` 파일에서 핸들러 이름을 파일별로 개명(vpaes_se_handler, mont_mul_handler 등).
+  - **현재 방법** (자동화): delocate 가 COFF 처리 중에 `*_handler` 패턴의 심볼을 감지하여 자동으로 파일별 유일 이름(`<symbol>_BCM_<fileindex>`)으로 개명. pl 파일 수정 불필요.
+- **delocate 자동 심볼 개명**: 
+  - `shouldRenameCOFFSymbol()`: `*_handler` 패턴 감지.
+  - `mapCOFFSymbol()`: 파일별로 유일한 이름 생성.
+  - `.def` 지시자, 라벨 정의, `.type`, `.size`, `.rva`/`.secrel32`/`.secidx` 참조 모두에서 개명 적용.
+  - `.L` 로컬 레이블도 파일별 개명(`_BCM_n`)하여 SEH 데이터가 참조하는 함수 레이블과 일관성 유지.
+  - ELF 은 `.cfi` 메타데이터만 쓰고 이런 핸들러 심볼이 없어 영향 없음.
+- **빌드 연결**: 16개 x86_64 BCM asm(rsaz-avx2 포함) + 4개 crypto asm 을 mingw64 GAS 로 생성해 `gen/sources.cmake` 의 `BCM_SOURCES_ASM`/`CRYPTO_SOURCES_ASM` 에 추가(`#if defined(_WIN32)` 가드라 비윈도우 빌드엔 무영향).
+
+검증(clean `make check-windows`): asm 함수(aes_hw_encrypt, gcm_ghash_clmul, rsaz_1024_mul_avx2, sha256_block_data_order_hw, vpaes_encrypt)가 **해시 모듈 안**에 위치, 해시영역 재배치 0개, 정적 해시 일치 + wine `FIPS INTEGRITY: PASS`. ELF delocate 단위테스트도 그대로 통과(ELF 무영향). 또한 `fips_selftest.c` 의 AES-256-CTR 속도 측정이 wine 에서 ~4.9 GiB/s 를 보여 AES-NI(asm)가 모듈 안에서 실제 동작함을 확인(순수 C 면 수백 MiB/s 수준).
+
+> 한계: 무결성(integrity) 자가시험은 wine 런타임까지 통과 확인. **알고리즘 KAT(가동 전 자가시험 전체)** 의 윈도우 실측은 후속.
+
+### 7.2 UEFI(x86_64) FIPS 빌드 지원 ✅
+
+UEFI x86_64 도 **PE/COFF + MS x64 ABI** 이므로 윈도우용 COFF/FIPS 파이프라인이 그대로 적용된다. `make build-uefi` 로 빌드한다.
+
+- **트리플 버그 우회**: clang 18.1.3 의 `x86_64-unknown-uefi` 는 데이터 레이아웃 불일치 버그(`m:w` vs `m:e`)로 trivial 코드도 컴파일 실패. 동작하는 COFF 트리플(`x86_64-w64-windows-gnu`, COFF·MS-ABI·mingw 헤더)을 사용한다.
+- **UEFI 코드젠 플래그**: `-mno-red-zone`(펌웨어 인터럽트가 red zone 을 덮어쓸 수 있어 필수) + `-fno-stack-protector`. 초기 부팅에서 SSE/AVX 가 비활성일 수 있어 `OPENSSL_NO_ASM=1`(순수 C). (`-ffreestanding` 은 mingw 헤더가 bsearch 등을 숨겨 빌드를 깨므로 미사용 — 정적 라이브러리는 EFI 앱 링크 시 freestanding 으로 취급.)
+- 검증(`make check-uefi`): COFF/FIPS 무결성 파이프라인 동일하게 동작 → 정적 해시 일치 + wine `FIPS INTEGRITY: PASS`(UEFI 빌드물도 COFF/MS-ABI 라 wine 에서 실행 가능).
+
+> 참고: `build-linux` 타깃은 여전히 `x86_64-unknown-uefi`(구 clang 깨진 트리플)를 사용한다(이번 작업 범위 밖).
+
+### 7.3 진짜 freestanding UEFI(`x86_64-unknown-uefi`, MSVC ABI) + libc++ 빌드 ✅
+
+llvm-22 로 갱신하면 `x86_64-unknown-uefi` 가 동작한다(단, **MSVC C++ ABI**: 따옴표 맹글링 + `@feat.00` + CodeView). 이 타깃으로 hosted libc 없이 FIPS crypto 를 빌드한다.
+
+- **libc 오버레이**(`util/uefi/overlay/`): ~~freestanding 에 없는 hosted 헤더를 선언만 제공~~ → **7.4 에서 picolibc 로 대체(오버레이 제거)**. CMakeLists 는 이제 `UEFI_OVERLAY` 대신 `PICOLIBC_INCLUDE` 캐시 변수로 외부 freestanding libc include 디렉터리를 받는다.
+- **libc++/libc++abi**: `USE_CUSTOM_LIBCXX=1` → CMake 가 자동으로 llvm-project `llvmorg-22.1.8` 를 받아 `util/bot/libcxx{,abi}` 로 연결, 업스트림 블록이 UEFI 툴체인으로 함께 빌드. 핵심 설정: `__config_site` freestanding 화(스레드/로캘/iostream/와이드문자 off), `-D__LP64__=1`(libc++abi `__cxa_exception` 레이아웃), `-fno-exceptions`(이 타깃에서 clang-22 의 예외 코드젠 SIGSEGV 회피), `-fno-threadsafe-statics`, `_LIBCXXABI_HAS_NO_THREADS`; host 의존 소스(스레드/로캘/iostream/예외 personality·terminate·guard 등) 제외.
+- **delocate MSVC 지원**: PEG 문법에 따옴표 심볼(`"?...@@"`)·`@`-심볼·CodeView 디렉티브(`.cv_*`) 추가(재생성). 따옴표 심볼의 local-target/redirector/accessor/external-ptr 이름은 따옴표 안쪽에 접두/접미를 넣어 파생(`decorateSymbol`), 디렉티브 재출력 시 재따옴표(`coffQuoteSymbol`). 외부 데이터 값 적재(`movq stderr(%rip),reg`)는 포인터 적재 후 역참조로 변환.
+- **소스 가드**: 경계 심볼(BORINGSSL_bcm_text_*)을 `extern "C"` 로(=MSVC 비맹글링, delocate 합성과 일치); bcm.cc/rand 의 POSIX 헤더 UEFI 가드; 지터 엔트로피 UEFI 활성화.
+- **엔트로피**: `crypto/rand/uefi.cc` — `CRYPTO_uefi_init(gBS)` 로 EFI Boot Services 를 받아 `EFI_RNG_PROTOCOL` 로 CRYPTO_sysrand 제공(`OPENSSL_RAND_UEFI`).
+
+검증(`make build-uefi` → `make verify-hash-uefi`): COFF `libcrypto.a`/`bcm.o` 생성, 해시 주입 완료, **해시영역 재배치 0개**, 정적 해시 일치(calculated==injected). 런타임 자가시험은 wine 불가(MSVC freestanding) → 실제 UEFI(QEMU/OVMF)에서 별도 확인 필요.
+
+### 7.4 libc 오버레이 → picolibc 전환 + cargo(`korecrypto-sys`) UEFI 빌드 ✅
+
+7.3 의 번들 libc 선언 오버레이(`util/uefi/overlay/`)를 제거하고, **picolibc**([jc-lab/picolibc-rs](https://github.com/jc-lab/picolibc-rs)) 를 진짜 freestanding C 표준 라이브러리로 사용한다. cargo(`korecrypto-sys`) 경로에서 `x86_64-unknown-uefi` 로 FIPS crypto 를 빌드/링크하는 것까지 검증했다.
+
+- **요구사항**: clang **>= 19**(clang 18 이하의 `x86_64-unknown-uefi` 데이터 레이아웃 버그 때문에 미지원). 기본 `clang` 이 18 이하면 `CC_x86_64-unknown-uefi`/`CXX_…`(예: clang-22)로 지정.
+- **boringssl 측 변경**:
+  - `util/uefi/overlay/` 삭제. CMakeLists 의 UEFI 블록은 `UEFI_OVERLAY`(번들) 대신 `PICOLIBC_INCLUDE` 캐시 변수(외부 freestanding libc include)를 `-isystem` 으로 추가하고, 미지정 시 `FATAL_ERROR`.
+  - 공개 헤더 `base.h`: `__UEFI__` 가드 제거 — picolibc 가 `stdlib.h`/`sys/types.h` 를 공급하므로 다른 타깃과 동일하게 포함(bindgen 도 이 헤더를 uefi 타깃으로 파싱).
+  - `target.h`/`Makefile` 의 오버레이 관련 주석을 picolibc 기준으로 갱신. `Makefile build-uefi` 는 `PICOLIBC_INCLUDE` 를 받도록 수정.
+- **picolibc 연동**: picolibc 크레이트는 `links = "c"` 로 빌드한 헤더 디렉터리를 `DEP_C_INCLUDE` 로 노출 → `korecrypto-sys` build.rs 가 이를 `-DPICOLIBC_INCLUDE` 로 CMake 에 전달. picolibc 에는 malloc 이 없으므로 `malloc` feature 를 켜 Rust 전역 할당자에 위임(최종 바이너리가 `#[global_allocator]` 등록 필요).
+- **`korecrypto-sys`(=boring-sys) 변경**:
+  - 새 feature `picolibc`(optional dep `picolibc`, `features=["malloc"]`).
+  - build.rs: uefi+picolibc 시 `OPENSSL_NO_ASM=1`, `USE_CUSTOM_LIBCXX=1`, `CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY`, **`no_default_flags(true)`**(cmake-rs 가 주입하는 `--target=x86_64-unknown-windows-gnu` 를 막고 크로스컴파일 블록의 `CMAKE_*_COMPILER_TARGET=uefi` 가 트리플 결정 → `__UEFI__` 정의로 libc++ 가 Windows 경로 대신 `aligned_alloc` 사용). **crypto 만 빌드/링크**(ssl 은 소켓 등 OS 의존으로 제외). FIPS 컴파일러는 uefi 에서 `CC/CXX`(clang>=19) 사용. 번들 `libcxx`/`libcxxabi` 링크(`liblibcxx.a`/`liblibcxxabi.a`).
+  - bindgen: uefi 타깃 인자(`--target` + `-I $DEP_C_INCLUDE`), 레이아웃 테스트 off(clang LLP64 vs Rust `c_long=i64` 불일치 회피).
+  - lib.rs: **`#![no_std]`** + `core::ffi`, bindgen `use_core()`.
+- **검증 하네스 `uefi-smoketest/`**(독립 워크스페이스): `uefi`(global_allocator) + picolibc(malloc) + `korecrypto-sys`(fips,picolibc). picolibc freestanding 스텁(write/read/lseek/close/_exit) + MS-ABI `__chkstk` no-op 제공. `CRYPTO_library_init`/`OPENSSL_malloc` 호출로 링크 강제.
+
+검증 결과: `cargo build --target x86_64-unknown-uefi` 로 **PE32+ EFI application**(`uefi-smoketest.efi`, Subsystem `EFI_APPLICATION`) 생성 — boringssl crypto(FIPS) + picolibc(libc/libm+malloc) + libc++/libc++abi + no_std 크레이트가 끊김 없이 링크됨. 빌드 방법은 `uefi-smoketest/README.md` 참조.
+
+> **ABI 주의**: clang 은 uefi 를 LLP64(`long`=4)로, Rust `core::ffi::c_long` 은 `i64`(8)로 보므로 `long` 을 쓰는 C API 는 UEFI 에서 FFI ABI 불일치 위험이 있다. crypto API 는 고정폭 타입 위주라 영향 없지만, `long` 기반 API 사용 시 주의.
+
+### 7.5 번들 libc++/libc++abi 를 libcrypto.a 로 병합 (모체 libc++ 충돌 회피) ✅
+
+bare-metal(picolibc) 빌드는 그동안 `libcrypto.a` 외에 `liblibcxx.a`/`liblibcxxabi.a` 를 따로 링크해야 했다. 모체 프로젝트가 libcrypto.a **하나만** 링크하면 되도록 번들 libc++/libc++abi 를 libcrypto.a 안으로 합치되, 모체가 자신의 libc++ 를 함께 쓰더라도 STL 심볼이 충돌하지 않게 한다.
+
+구현은 **전부 boringssl 빌드(CMake) 안**에 둔다. libcrypto.a 는 boringssl 빌드의 산출물이므로, cargo(`korecrypto-sys`) 뿐 아니라 Makefile·외부 통합자 등 어떤 경로로 빌드해도 동일하게 self-contained libcrypto.a 가 나온다. (Rust build.rs 는 건드리지 않는다.)
+
+- **충돌 회피 = ABI 네임스페이스 격리(포맷 비의존)**: libc++ 의 인라인 ABI 네임스페이스를 `std::__korecrypto` 로 바꿔 빌드한다. `CMakeLists.txt` 의 USE_CUSTOM_LIBCXX 블록에서 `add_compile_definitions(_LIBCPP_ABI_NAMESPACE=__korecrypto)`(디렉터리 전역) → 이후 정의되는 crypto/libcxx/libcxxabi 모든 C++ 타깃에 동일 적용되어 경계 너머 STL 참조가 일관되게 해소된다. 모체의 `std::__1` 과 맹글링이 갈라져 weak/COMDAT 폴딩 충돌이 없다. `BAREMETAL_LIBC_INCLUDE` 로 게이트해 upstream 의 hosted USE_CUSTOM_LIBCXX 테스트 빌드에는 영향이 없다. (기본값은 매크로 미정의 → 네임스페이스가 리터럴 토큰 `_LIBCPP_ABI_NAMESPACE` 로 남던 통제 불가 상태였다.)
+- **가시성은 무효(검토 결과)**: `-fvisibility=hidden`+`_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS`+`OPENSSL_EXPORT=default` 식 심볼 숨김은 **COFF(UEFI 주 타깃)에서 효과 없음**(실측: 적용 전후 심볼 테이블 동일, std 심볼은 weak/COMDAT 그대로). COFF 엔 ELF 식 가시성 개념이 없기 때문. 충돌 회피는 ABI 네임스페이스가 전담하고, 가시성은 ELF 노출표면 정리용 보강일 뿐이라 채택하지 않았다.
+- **병합**: `CMakeLists.txt` 의 crypto `POST_BUILD` 가 `util/korecrypto-merge-libcxx.cmake` 를 `cmake -P` 로 호출 → `${CMAKE_AR} -M`(MRI `addlib`)로 `liblibcxx.a`+`liblibcxxabi.a` 의 모든 멤버를 `libcrypto.a` 로 합친다. 임시 파일에 만든 뒤 원자적 교체. **멱등성**: CMake 가 crypto 재링크마다 libcrypto.a 를 crypto-only 로 새로 만들고 직후 이 단계가 도므로 중복이 없고, 추가로 센티넬 멤버(`private_typeinfo.cpp.o`)가 이미 있으면 건너뛴다.
+- **링크**: build.rs 의 `static=libcxx`/`static=libcxxabi` 는 그대로 둔다. 정적 아카이브는 미해결 심볼이 있을 때만 멤버를 끌어오므로, 이미 libcrypto.a 가 제공한 libc++ 심볼 때문에 liblibcxx.a 멤버는 적재되지 않아 무해(중복 오류 없음). `static=crypto` 한 줄로 libc++ 까지 링크된다.
+- **검증**(aarch64-unknown-uefi, COFF): 병합 후 `libcrypto.a` 309 멤버(crypto 273 + libcxx 23 + libcxxabi 13), `private_typeinfo.cpp.o` 포함, STL 심볼 네임스페이스 `std::__korecrypto`, `__cxa_pure_virtual`/`__cxa_throw` 등 libc++abi 런타임이 libcrypto.a 안에 정의됨. 스텁/`FORCE:MULTIPLE` 없이 smoketest `.efi` 링크 성공 — **libc++ 미해결/중복 심볼 0건**.
+
+> 참고: libc++abi 의 ABI 표준 심볼(`operator new/delete`, `__cxa_*`)은 네임스페이스 격리 대상이 아니므로 이름이 유지된다. 정적 아카이브 링크에서는 모체가 동일 심볼을 정의해도 링커가 한쪽만 채택해 충돌하지 않는다("충돌 회피로 충분" 요건 충족).
+>
+> COFF 부분링크+localize 식 심볼 숨김은 aarch64 COFF 에서 불가능했다(lld-link 의 relocatable `-r` 미지원, llvm-objcopy 의 COFF localize 미지원, aarch64 mingw 부재) — ABI 네임스페이스 방식이 포맷 비의존이라 이 제약을 우회한다.
+
+### 7.6 aarch64 UEFI: CPU 특성 검출(OPENSSL_cpuid_setup) — sysreg 경로 활성화 ✅
+
+aarch64 에서 asm 을 켜면(`!OPENSSL_NO_ASM`) `crypto/internal.h` 가 `NEED_CPUID` 를 정의해 `crypto.cc` 가 `OPENSSL_cpuid_setup()` 을 참조한다. 그런데 그 **정의**는 `cpu_aarch64_<platform>.cc` 가 각자 특정 OS 매크로(`OPENSSL_LINUX/WINDOWS/APPLE/FREEBSD/FUCHSIA`, sysreg 는 `ANDROID_BAREMETAL||OPENSSL_FREEBSD`) 아래에서만 제공한다. UEFI(freestanding)는 어느 플랫폼에도 안 걸려 정의가 없어 `undefined symbol: bssl::OPENSSL_cpuid_setup()` 링크 오류가 났다(과거엔 no-op 스텁으로 우회).
+
+- **수정**: `crypto/cpu_aarch64_sysreg.cc` 의 가드에 `KORECRYPTO_BAREMETAL` 을 추가. freestanding 에는 getauxval 등 OS 질의 수단이 없고 통합자가 EL1/EL2 에서 구동하므로 `MRS` 로 `id_aa64pfr0_el1`/`id_aa64isar0_el1` 을 직접 읽어 NEON/AES/SHA/PMULL 등을 실제 검출한다(다른 cpu_aarch64_*.cc 는 UEFI 에서 비게 되므로 중복 정의 없음). 스모크테스트의 `OPENSSL_cpuid_setup` 스텁 불필요.
+- **검증**(aarch64-unknown-uefi, QEMU virt + cortex-a72): 스텁 없이 `.efi` 링크 성공, `libcrypto.a` 가 `OPENSSL_cpuid_setup`(T, sysreg.cc) 정의. 런타임 `FIPS_mode=1`, `BORINGSSL_integrity_test=1`, `BORINGSSL_self_test_all=1` → **RESULT: PASS** (MRS 트랩 없음, HW 검출 + libc++ 병합 상태에서도 FIPS 무결성·KAT 통과).
+
+> 빌드 주의: `boring-sys/build.rs` 는 boringssl 소스에 대한 `rerun-if-changed` 를 선언하지 않으므로, **boringssl 소스만** 고친 뒤에는 cargo 가 build.rs 를 재실행하지 않아 cmake 가 재컴파일하지 않을 수 있다. 이 경우 `cargo clean -p korecrypto-sys`(또는 build.rs touch) 후 빌드한다. 클린 빌드는 정상 반영된다.

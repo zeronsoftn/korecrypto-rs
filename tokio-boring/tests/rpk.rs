@@ -1,11 +1,11 @@
 #![cfg(feature = "rpk")]
 
+use futures::future;
 use korecrypto::pkey::PKey;
 use korecrypto::ssl::{
     CertificateType, SslAcceptor, SslAlert, SslConnector, SslCredential, SslMethod, SslVerifyError,
     SslVerifyMode,
 };
-use futures::future;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;

@@ -24,6 +24,8 @@ korecrypto-sys = { version = "5.2.0", path = "./boring-sys", default-features = 
 korecrypto = { version = "5.2.0", path = "./boring", default-features = false }
 tokio-korecrypto = { version = "5.2.0", path = "./tokio-boring", default-features = false }
 
+picolibc = { version = "0.0.5" }
+
 bindgen = { version = "0.72.0", default-features = false, features = ["runtime"] }
 bitflags = "2.9"
 brotli = "8.0"

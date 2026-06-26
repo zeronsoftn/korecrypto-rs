@@ -1,5 +1,5 @@
-use korecrypto::ssl::{SslOptions, SslRef, SslSession, SslSessionCacheMode, SslVersion};
 use futures::future;
+use korecrypto::ssl::{SslOptions, SslRef, SslSession, SslSessionCacheMode, SslVersion};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tokio::net::TcpStream;

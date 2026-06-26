@@ -1,5 +1,5 @@
-use korecrypto::ssl::{SslConnector, SslMethod};
 use futures::future;
+use korecrypto::ssl::{SslConnector, SslMethod};
 use std::net::ToSocketAddrs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;

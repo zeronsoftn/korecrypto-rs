@@ -1,7 +1,9 @@
 [package]
 name = "korecrypto"
 version = { workspace = true }
-authors = ["Steven Fackler <sfackler@gmail.com>", "Ivan Nikulin <ifaaan@gmail.com>"]
+authors = ["Steven Fackler <sfackler@gmail.com>",
+           "Ivan Nikulin <ifaaan@gmail.com>",
+           "Jopseh Lee <joseph@zeronsoftn.com>"]
 license = "Apache-2.0"
 description = "BoringSSL bindings"
 repository = { workspace = true }

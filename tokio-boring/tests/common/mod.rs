@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
+use futures::future::{self, Future};
 use korecrypto::error::ErrorStack;
 use korecrypto::ssl::{
     SslAcceptor, SslAcceptorBuilder, SslConnector, SslConnectorBuilder, SslFiletype, SslMethod,
 };
-use futures::future::{self, Future};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};

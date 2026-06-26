@@ -3,7 +3,8 @@ name = "korecrypto-sys"
 version = { workspace = true }
 authors = ["Alex Crichton <alex@alexcrichton.com>",
            "Steven Fackler <sfackler@gmail.com>",
-           "Ivan Nikulin <ifaaan@gmail.com>"]
+           "Ivan Nikulin <ifaaan@gmail.com>",
+           "Jopseh Lee <joseph@zeronsoftn.com>"]
 license = "MIT"
 description = "FFI bindings to BoringSSL"
 repository = { workspace = true }
@@ -74,6 +75,27 @@ allow-crl-extensions-bad-version = []
 # same feature set can be provided by setting
 # `BORING_BSSL{,_FIPS}_SOURCE_PATH`.
 underscore-wildcards = []
+
+uefi = ["baremetal"]
+baremetal = ["picolibc"]
+
+# UEFI/baremetal(freestanding) 빌드 지원. 활성화하면 picolibc 크레이트를 받아
+# freestanding C 표준 라이브러리로 정적 링크하고, picolibc 가 `links = "c"` 로
+# 내보내는 include 디렉터리(`DEP_C_INCLUDE`)를 BoringSSL 의 CMake 빌드에
+# `PICOLIBC_INCLUDE` 로 전달한다. picolibc 자체에는 malloc 이 없으므로 picolibc 의
+# `malloc` feature 도 함께 켜서 Rust 전역 할당자에 위임하게 한다(최종 바이너리가
+# `#[global_allocator]` 를 등록해야 함). 주로 `x86_64-unknown-uefi` 타깃에서 사용한다.
+#
+# 요구사항: clang >= 19 (clang 18 이하의 x86_64-unknown-uefi 데이터 레이아웃 버그
+#           때문에 지원하지 않음). 기본 `clang` 이 18 이하면 CC/CXX 환경변수로
+#           clang-19 이상을 지정한다(예: CC_x86_64-unknown-uefi=clang-22).
+# UEFI 에서는 crypto 만 빌드/링크하며 ssl(TLS) 은 제외한다(소켓 등 OS 의존성).
+picolibc = ["dep:picolibc"]
+
+[dependencies]
+# UEFI(freestanding) 빌드용 C 표준 라이브러리. `picolibc` feature 일 때만 받는다.
+# `links = "c"` 라서 boring-sys 의 build.rs 에 `DEP_C_INCLUDE` 가 노출된다.
+picolibc = { workspace = true, features = ["bindings", "malloc", "posix-console"], optional = true }
 
 [build-dependencies]
 bindgen = { workspace = true }

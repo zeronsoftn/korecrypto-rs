@@ -1,4 +1,3 @@
-use korecrypto::ssl::{SslAcceptor, SslConnector, SslFiletype, SslMethod};
 use bytes::Bytes;
 use futures::StreamExt;
 use http_body_util::{BodyStream, Empty};
@@ -7,6 +6,7 @@ use hyper_korecrypto::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::{TokioExecutor, TokioIo};
+use korecrypto::ssl::{SslAcceptor, SslConnector, SslFiletype, SslMethod};
 use std::convert::Infallible;
 use std::{io, iter};
 use tokio::net::TcpListener;

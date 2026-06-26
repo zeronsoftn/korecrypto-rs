@@ -230,11 +230,12 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     }
 
     if should_use_cmake_cross_compilation(config) {
+        let clang_target = config.clang_target();
         boringssl_cmake
             .define("CMAKE_CROSSCOMPILING", "true")
-            .define("CMAKE_C_COMPILER_TARGET", &config.target)
-            .define("CMAKE_CXX_COMPILER_TARGET", &config.target)
-            .define("CMAKE_ASM_COMPILER_TARGET", &config.target);
+            .define("CMAKE_C_COMPILER_TARGET", &clang_target)
+            .define("CMAKE_CXX_COMPILER_TARGET", &clang_target)
+            .define("CMAKE_ASM_COMPILER_TARGET", &clang_target);
     }
 
     if !config.features.fips {
@@ -308,12 +309,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
             boringssl_cmake.cflag(&cflag);
         }
 
-        "windows" if config.host.contains("windows") => {
-            // BoringSSL's CMakeLists.txt isn't set up for cross-compiling using Visual Studio.
-            // Disable assembly support so that it at least builds.
-            boringssl_cmake.define("OPENSSL_NO_ASM", "YES");
-        }
-
         "linux" => match &*config.target_arch {
             "x86" => {
                 boringssl_cmake.define(
@@ -354,6 +349,31 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
         },
 
         _ => {}
+    }
+
+    if config.features.uefi {
+        boringssl_cmake
+            .define("KORECRYPTO_UEFI", "1");
+    }
+
+    // UEFI/baremetal(freestanding) + picolibc 빌드 구성.
+    // picolibc 크레이트가 `links = "c"` 로 내보내는 include 디렉터리를
+    // `DEP_C_INCLUDE` 로 받아 BoringSSL CMake 빌드에 `BAREMETAL_LIBC_INCLUDE` 로 전달한다.
+    if config.features.picolibc {
+        let libc_include = std::env::var("DEP_C_INCLUDE").expect(
+            "picolibc feature 가 켜져 있으면 DEP_C_INCLUDE 가 설정되어야 합니다 \
+             (picolibc 의존성이 links=\"c\" 로 노출). cargo clean 후 다시 빌드해 보세요.",
+        );
+        // bare-metal(freestanding) 공통 구성. picolibc feature 자체가 freestanding
+        // 신호이므로 OS 와 무관하게 적용한다(외부 libc include + 번들 libc++).
+        boringssl_cmake
+            // 외부 freestanding libc(picolibc) 의 include 디렉터리.
+            .define("BAREMETAL_LIBC_INCLUDE", &libc_include)
+            // freestanding 에는 시스템 C++ 표준 라이브러리가 없으므로 번들
+            // libc++/libc++abi 를 함께 빌드한다.
+            .define("USE_CUSTOM_LIBCXX", "1")
+            // try_compile 도 실행 파일이 아닌 정적 라이브러리로(링크 단계 회피).
+            .define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
     }
 
     boringssl_cmake
@@ -430,7 +450,18 @@ fn get_extra_clang_args_for_bindgen(config: &Config) -> Vec<String> {
                 }
             }
         }
-        _ => {}
+        _ => {
+            if config.features.baremetal {
+                // BoringSSL 공개 헤더는 base.h 를 통해 stdlib.h/sys/types.h 를 포함하는데,
+                // UEFI 에서는 이를 picolibc 가 공급한다. libclang 이 picolibc 헤더를
+                // 찾고, uefi 타깃으로 헤더를 파싱하도록 인자를 추가한다.
+                if let Ok(inc) = std::env::var("DEP_C_INCLUDE") {
+                    params.push("-I".to_string());
+                    params.push(inc);
+                }
+                params.push(format!("--target={}", config.clang_target()));
+            }
+        }
     }
 
     params
@@ -453,7 +484,11 @@ fn ensure_patches_applied(config: &Config) -> io::Result<()> {
         );
     }
 
-    let mut lock_file = LockFile::open(&config.out_dir.join(".patch_lock"))?;
+    let lock_file_path = config.out_dir.join(".patch_lock");
+    if lock_file_path.exists() {
+        return Ok(());
+    }
+    let mut lock_file = LockFile::open(&lock_file_path)?;
     let src_path = get_boringssl_source_path(config);
     let has_git = src_path.join(".git").exists();
 
@@ -565,6 +600,7 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
             cfg.env("CMAKE_BUILD_PARALLEL_LEVEL", num_jobs);
         }
 
+        // FIPS 는 delocate 등을 위해 clang 을 강제한다.
         if config.features.fips {
             cfg.define("CMAKE_C_COMPILER", "clang")
                 .define("CMAKE_CXX_COMPILER", "clang++")
@@ -572,7 +608,13 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
                 .define("FIPS", "1");
         }
 
-        cfg.build_target("ssl").build();
+        // bare-metal(freestanding, picolibc) 빌드는 crypto 만 빌드한다. ssl 은 소켓/
+        // 시계 등 OS 의존 헤더(sys/socket.h 등)를 요구해 freestanding 에서 빌드되지
+        // 않으며, bare-metal 용도(KCMVP 암호 모듈)에는 TLS 스택이 필요 없다.
+        let crypto_only = config.features.baremetal || config.features.picolibc;
+        if !crypto_only {
+            cfg.build_target("ssl").build();
+        }
         let path = cfg.build_target("crypto").build();
         let build_dir = path.join("build");
         if build_dir.exists() {
@@ -652,6 +694,11 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
+    let src_path = get_boringssl_source_path(&config);
+    println!(
+        "cargo:rerun-if-changed={}",
+        src_path.join("CMakeLists.txt").display()
+    );
     ensure_patches_applied(&config)?;
     if !config.env.docs_rs {
         emit_link_directives(&config);
@@ -688,7 +735,11 @@ fn emit_link_directives(config: &Config) {
         println!("cargo:rustc-link-lib={cpp_lib}");
     }
     println!("cargo:rustc-link-lib=static=crypto");
-    println!("cargo:rustc-link-lib=static=ssl");
+    // bare-metal(freestanding, picolibc) 에서는 ssl 을 빌드하지 않으므로 링크도 하지
+    // 않는다. (생성된 SSL FFI 선언은 호출되지 않는 한 링크를 요구하지 않는다.)
+    if !config.features.picolibc {
+        println!("cargo:rustc-link-lib=static=ssl");
+    }
 
     if config.target_os == "windows" {
         // Rust 1.87.0 compat - https://github.com/rust-lang/rust/pull/138233
@@ -739,6 +790,9 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         .derive_default(true)
         .derive_eq(false)
         .derive_partialeq(false)
+        // no_std 호환: 생성 바인딩이 std 대신 core 를 참조하게 한다(UEFI 등
+        // freestanding 타깃 지원). std 타깃에서도 core::ffi 타입은 동일하다.
+        .use_core()
         .default_enum_style(bindgen::EnumVariation::NewType {
             is_bitfield: false,
             is_global: false,
@@ -747,13 +801,26 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         .generate_comments(true)
         .fit_macro_constants(false)
         .size_t_is_usize(true)
-        .layout_tests(config.env.debug.is_some())
+        // UEFI 에서는 레이아웃 테스트를 끈다. clang 은 x86_64-unknown-uefi 를 LLP64
+        // (long=4)로 보지만 Rust 의 core::ffi::c_long 은 (target_os=uefi 가 windows 가
+        // 아니라) i64 로 정의되어, `long` 을 쓰는 구조체(ldiv_t/fd_set 등)의 크기
+        // 단언이 어긋난다. crypto API 는 이런 타입을 쓰지 않으므로 단언만 비활성화한다.
+        .layout_tests(config.env.debug.is_some() && config.target_os != "uefi")
         .merge_extern_blocks(true)
         .prepend_enum_name(true)
         .blocklist_type("max_align_t") // Not supported by bindgen on all targets, not used by BoringSSL
         .clang_args(get_extra_clang_args_for_bindgen(config))
         .clang_arg("-I")
         .clang_arg(include_path.display().to_string());
+
+    if config.features.uefi {
+        builder = builder
+            .clang_arg("-DKORECRYPTO_UEFI")
+    }
+    if config.features.baremetal {
+        builder = builder
+            .clang_arg("-DKORECRYPTO_BAREMETAL")
+    }
 
     if let Some(sysroot) = &config.env.sysroot {
         builder = builder
