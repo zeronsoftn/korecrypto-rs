@@ -352,8 +352,7 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     }
 
     if config.features.uefi {
-        boringssl_cmake
-            .define("KORECRYPTO_UEFI", "1");
+        boringssl_cmake.define("KORECRYPTO_UEFI", "1");
     }
 
     // UEFI/baremetal(freestanding) + picolibc 빌드 구성.
@@ -814,12 +813,10 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         .clang_arg(include_path.display().to_string());
 
     if config.features.uefi {
-        builder = builder
-            .clang_arg("-DKORECRYPTO_UEFI")
+        builder = builder.clang_arg("-DKORECRYPTO_UEFI")
     }
     if config.features.baremetal {
-        builder = builder
-            .clang_arg("-DKORECRYPTO_BAREMETAL")
+        builder = builder.clang_arg("-DKORECRYPTO_BAREMETAL")
     }
 
     if let Some(sysroot) = &config.env.sysroot {

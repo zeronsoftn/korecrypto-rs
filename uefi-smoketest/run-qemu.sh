@@ -20,18 +20,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# --- boring-sys 소스 복사 우회 ---
-# boring-sys build.rs 는 기본적으로 deps/boringssl 전체를 OUT_DIR 로 복사한다.
-# 개발 트리에 수동 빌드 산출물(build-*/SAMPLE/util/bot/llvm-project-src 등)이 있으면
-# 복사가 실패한다. 로컬 서브모듈이 있으면 복사 없이 제자리 빌드하도록 SOURCE_PATH 를
-# 자동으로 설정한다.
-BSSL_SRC="$SCRIPT_DIR/../boring-sys/deps/boringssl/CMakeLists.txt"
-if [ -z "${BORING_BSSL_FIPS_SOURCE_PATH:-}" ] && [ -f "$BSSL_SRC" ]; then
-  export BORING_BSSL_FIPS_SOURCE_PATH
-  BORING_BSSL_FIPS_SOURCE_PATH="$(cd "$SCRIPT_DIR/../boring-sys/deps/boringssl" && pwd)"
-  export BORING_BSSL_FIPS_ASSUME_PATCHED=1
-  echo "[*] 로컬 boringssl 서브모듈 사용 (복사 우회): $BORING_BSSL_FIPS_SOURCE_PATH"
-fi
+## --- boring-sys 소스 복사 우회 ---
+## boring-sys build.rs 는 기본적으로 deps/boringssl 전체를 OUT_DIR 로 복사한다.
+## 개발 트리에 수동 빌드 산출물(build-*/SAMPLE/util/bot/llvm-project-src 등)이 있으면
+## 복사가 실패한다. 로컬 서브모듈이 있으면 복사 없이 제자리 빌드하도록 SOURCE_PATH 를
+## 자동으로 설정한다.
+#BSSL_SRC="$SCRIPT_DIR/../boring-sys/deps/boringssl/CMakeLists.txt"
+#if [ -z "${BORING_BSSL_FIPS_SOURCE_PATH:-}" ] && [ -f "$BSSL_SRC" ]; then
+#  export BORING_BSSL_FIPS_SOURCE_PATH
+#  BORING_BSSL_FIPS_SOURCE_PATH="$(cd "$SCRIPT_DIR/../boring-sys/deps/boringssl" && pwd)"
+#  export BORING_BSSL_FIPS_ASSUME_PATCHED=1
+#  echo "[*] 로컬 boringssl 서브모듈 사용 (복사 우회): $BORING_BSSL_FIPS_SOURCE_PATH"
+#fi
 
 # --- 툴체인 기본값(clang >= 19 필요) ---
 if [ -d /usr/lib/llvm-22/bin ]; then
@@ -71,7 +71,6 @@ cargo build -p uefi-smoketest --target ${TARGET_TRIPLE}
 test -f "$EFI" || { echo "[ERR] .efi not found: $EFI"; exit 1; }
 echo "[*] built: $EFI"
 
-# OVMF VARS 는 쓰기가능 복사본이 필요.
 WORK="$(mktemp -d)"
 echo "WORK=$WORK"
 

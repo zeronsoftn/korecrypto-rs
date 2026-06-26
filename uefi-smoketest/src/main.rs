@@ -83,31 +83,6 @@ extern "C" fn _exit(_code: c_int) -> ! {
     unsafe { poweroff() }
 }
 
-// // `std::get_new_handler()` — libc++abi 의 해당 TU 가 UEFI 빌드에서 제외되어 미정의.
-// // operator new 가 OOM 루프에서 호출한다. 설치된 핸들러 없음을 뜻하는 null 반환.
-// // x86_64-unknown-uefi 의 libc++ 는 MSVC C++ ABI 맹글링을 쓴다.
-// #[export_name = "?get_new_handler@std@@YAP6AXXZXZ"]
-// pub extern "C" fn get_new_handler() -> *const c_void {
-//     core::ptr::null()
-// }
-//
-// // aarch64 의 libc++/boringssl 은 (clang 의 aarch64-unknown-uefi 데이터 레이아웃
-// // 버그 때문에) -windows-gnu 트리플로 빌드되어 Itanium C++ ABI 맹글링을 쓴다.
-// // 따라서 같은 두 심볼을 Itanium 이름으로도 제공한다.
-// //   _ZSt15get_new_handlerv          = std::get_new_handler()
-// //   _ZN4bssl19OPENSSL_cpuid_setupEv = bssl::OPENSSL_cpuid_setup()
-// #[export_name = "_ZSt15get_new_handlerv"]
-// pub extern "C" fn get_new_handler_itanium() -> *const c_void {
-//     core::ptr::null()
-// }
-//
-// // 이 freestanding(aarch64, OPENSSL_WINDOWS 미정의) 구성에서는 boringssl 의
-// // cpu_aarch64_*.cc 가 하나도 컴파일되지 않아 OPENSSL_cpuid_setup 이 미정의다.
-// // CPU 특성 검출을 하지 않는 no-op 로 제공한다(armcaps 기본값=특성 없음 → 일반 C
-// // 암호 경로 사용). FIPS KAT 정확성에는 영향이 없다.
-// #[export_name = "_ZN4bssl19OPENSSL_cpuid_setupEv"]
-// pub extern "C" fn openssl_cpuid_setup_stub() {}
-
 // mingw64 어셈블리의 SE 핸들러(se_handler)들은 `__imp_RtlVirtualUnwind` 를
 // 간접 호출한다. UEFI 는 예외(-fno-exceptions)를 사용하지 않으므로 실제로 호출되지
 // 않는다. 링크 오류 해소를 위해 null 포인터 IAT 엔트리를 제공한다.
@@ -285,7 +260,7 @@ fn main() -> Status {
 
         let ok = fips_mode == 1 && integrity == 1 && self_test == 1;
 
-        // run-qemu.sh 가 grep 하는 결과 표지(sentinel).
+        // run-qemu.sh 가 grep 하는 결과 표지.
         log::info!("RESULT: {}", if ok { "PASS" } else { "FAIL" });
 
         poweroff();
