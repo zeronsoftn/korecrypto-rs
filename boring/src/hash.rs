@@ -76,6 +76,58 @@ impl MessageDigest {
         unsafe { MessageDigest(ffi::EVP_sha512_256()) }
     }
 
+    /// LSH (KS X 3262), a KCMVP validation-target hash function.
+    #[must_use]
+    pub fn lsh256_224() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh256_224()) }
+    }
+
+    #[must_use]
+    pub fn lsh256_256() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh256_256()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_224() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_224()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_256() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_256()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_384() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_384()) }
+    }
+
+    #[must_use]
+    pub fn lsh512_512() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_lsh512_512()) }
+    }
+
+    /// SHA-3 (FIPS 202), a KCMVP validation-target hash function.
+    #[must_use]
+    pub fn sha3_224() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_sha3_224()) }
+    }
+
+    #[must_use]
+    pub fn sha3_256() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_sha3_256()) }
+    }
+
+    #[must_use]
+    pub fn sha3_384() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_sha3_384()) }
+    }
+
+    #[must_use]
+    pub fn sha3_512() -> MessageDigest {
+        unsafe { MessageDigest(ffi::EVP_sha3_512()) }
+    }
+
     #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn as_ptr(&self) -> *const ffi::EVP_MD {
@@ -116,7 +168,7 @@ use self::State::*;
 /// Calculate a hash in one go:
 ///
 /// ```
-/// use boring::hash::{hash, MessageDigest};
+/// use korecrypto::hash::{hash, MessageDigest};
 ///
 /// let data = b"\x42\xF4\x97\xE0";
 /// let spec = b"\x7c\x43\x0f\x17\x8a\xef\xdf\x14\x87\xfe\xe7\x14\x4e\x96\x41\xe2";
@@ -127,7 +179,7 @@ use self::State::*;
 /// Supply the input in chunks:
 ///
 /// ```
-/// use boring::hash::{Hasher, MessageDigest};
+/// use korecrypto::hash::{Hasher, MessageDigest};
 ///
 /// let data = [b"\x42\xF4", b"\x97\xE0"];
 /// let spec = b"\x7c\x43\x0f\x17\x8a\xef\xdf\x14\x87\xfe\xe7\x14\x4e\x96\x41\xe2";
@@ -400,6 +452,69 @@ mod tests {
         h.write_all(&Vec::from_hex(hashtest.0).unwrap()).unwrap();
         let res = h.finish().unwrap();
         assert_eq!(hex::encode(res), hashtest.1);
+    }
+
+    // LSH (KS X 3262) KATs, generated from the KISA LSH reference. Inputs are
+    // the empty string and "abc" (0x616263).
+    #[test]
+    fn test_lsh_kat() {
+        let cases: [(MessageDigest, &str, &str); 7] = [
+            (MessageDigest::lsh256_224(), "",
+             "48a0d55b2b3d91f26e06f7110fe9ce8ea0e2656bbe344cb1c5930653"),
+            (MessageDigest::lsh256_224(), "616263",
+             "f7c53ba4034e708e74fba42e55997ca5126bb7623688f85342f73732"),
+            (MessageDigest::lsh256_256(), "616263",
+             "5fbf365daea5446a7053c52b57404d77a07a5f48a1f7c1963a0898ba1b714741"),
+            (MessageDigest::lsh512_224(), "",
+             "3c124edfe149b45c067965dae681322cdf52aa2c9d738b8f271b9318"),
+            (MessageDigest::lsh512_256(), "616263",
+             "cd892310532602332b613f1ec11a6962fca61ea09ecffcd4bcf75858d802edec"),
+            (MessageDigest::lsh512_384(), "616263",
+             "5f344efaa0e43ccd2e5e194d6039794b4fb431f10fb4b65fd45e9da4ecde0f27b66e8dbdfa47252e0d0b741bfd91f9fe"),
+            (MessageDigest::lsh512_512(), "",
+             "118a2ff2a99e3b2134125e2baf20ebe3bdd034d5a69b29c22fc4995063340b46697801d7f7fb0070568f78e8ed514215fc70af27d6f27b01aa8a1da72b14ce7c"),
+        ];
+        for (md, input, expected) in cases {
+            hash_test(md, &(input, expected));
+        }
+
+        // Chunked updates (crossing block boundaries) must match one-shot.
+        let data = vec![0x5au8; 300];
+        for md in [MessageDigest::lsh256_256(), MessageDigest::lsh512_512()] {
+            let oneshot = hash(md, &data).unwrap();
+            let mut h = Hasher::new(md).unwrap();
+            for chunk in data.chunks(7) {
+                h.update(chunk).unwrap();
+            }
+            let chunked = h.finish().unwrap();
+            assert_eq!(hex::encode(&oneshot), hex::encode(&chunked));
+        }
+    }
+
+    // SHA-3 (FIPS 202) KATs. Inputs are the empty string and "abc" (0x616263).
+    #[test]
+    fn test_sha3_kat() {
+        let cases: [(MessageDigest, &str, &str); 8] = [
+            (MessageDigest::sha3_224(), "",
+             "6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7"),
+            (MessageDigest::sha3_224(), "616263",
+             "e642824c3f8cf24ad09234ee7d3c766fc9a3a5168d0c94ad73b46fdf"),
+            (MessageDigest::sha3_256(), "",
+             "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"),
+            (MessageDigest::sha3_256(), "616263",
+             "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"),
+            (MessageDigest::sha3_384(), "",
+             "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004"),
+            (MessageDigest::sha3_384(), "616263",
+             "ec01498288516fc926459f58e2c6ad8df9b473cb0fc08c2596da7cf0e49be4b298d88cea927ac7f539f1edf228376d25"),
+            (MessageDigest::sha3_512(), "",
+             "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26"),
+            (MessageDigest::sha3_512(), "616263",
+             "b751850b1a57168a5693cd924b6b096e08f621827444f70d884f5d0240d2712e10e116e9192af3c91a7ec57647e3934057340b4cf408d5a56592f8274eec53f0"),
+        ];
+        for (md, input, expected) in cases {
+            hash_test(md, &(input, expected));
+        }
     }
 
     // Test vectors from http://www.nsrl.nist.gov/testdata/

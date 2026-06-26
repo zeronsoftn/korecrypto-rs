@@ -18,10 +18,16 @@ pub(crate) struct Config {
 }
 
 pub(crate) struct Features {
+    pub(crate) baremetal: bool,
+    pub(crate) uefi: bool,
     pub(crate) fips: bool,
     pub(crate) rpk: bool,
     pub(crate) underscore_wildcards: bool,
     pub(crate) allow_crl_extensions_bad_version: bool,
+    /// UEFI/baremetal(freestanding) 빌드에서 picolibc 를 freestanding libc 로
+    /// 사용한다. picolibc 크레이트의 `DEP_C_INCLUDE` 를 BoringSSL CMake 빌드에
+    /// 넘긴다.
+    pub(crate) picolibc: bool,
 }
 
 pub(crate) struct Env {
@@ -64,7 +70,11 @@ impl Config {
             .map(|s| s.to_owned())
             .collect();
 
-        let features = Features::from_env();
+        let mut features = Features::from_env();
+        if target_os == "uefi" {
+            features.uefi = true
+        }
+
         let env = Env::from_env(&host, &target, features.is_fips_like());
 
         let is_bazel = env
@@ -129,15 +139,22 @@ impl Config {
         }
         Ok(())
     }
+
+    pub fn clang_target(&self) -> String {
+        env::var("KORECRYPTO_CLANG_TARGET").unwrap_or_else(|_| self.target.clone())
+    }
 }
 
 impl Features {
     fn from_env() -> Self {
         Self {
+            baremetal: cfg!(feature = "baremetal"),
+            uefi: cfg!(feature = "uefi"),
             fips: cfg!(feature = "fips"),
             rpk: cfg!(feature = "rpk"),
             underscore_wildcards: cfg!(feature = "underscore-wildcards"),
             allow_crl_extensions_bad_version: cfg!(feature = "allow-crl-extensions-bad-version"),
+            picolibc: cfg!(feature = "picolibc"),
         }
     }
 

@@ -1,11 +1,13 @@
 [package]
-name = "boring"
+name = "korecrypto"
 version = { workspace = true }
-authors = ["Steven Fackler <sfackler@gmail.com>", "Ivan Nikulin <ifaaan@gmail.com>"]
+authors = ["Steven Fackler <sfackler@gmail.com>",
+           "Ivan Nikulin <ifaaan@gmail.com>",
+           "Jopseh Lee <joseph@zeronsoftn.com>"]
 license = "Apache-2.0"
 description = "BoringSSL bindings"
 repository = { workspace = true }
-documentation = "https://docs.rs/boring"
+documentation = "https://docs.rs/korecrypto"
 readme = "README.md"
 keywords = ["tls", "ssl", "dtls", "post-quantum", "fips"]
 categories = ["cryptography", "api-bindings"]
@@ -20,7 +22,12 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 
 # Use a FIPS-validated version of BoringSSL.
-fips = ["boring-sys/fips"]
+fips = ["korecrypto-sys/fips"]
+
+# baremetal
+uefi = ["korecrypto-sys/uefi", "baremetal"]
+baremetal = ["korecrypto-sys/baremetal", "picolibc"]
+picolibc = ["korecrypto-sys/picolibc"]
 
 # **DO NOT USE** This will be removed without warning in future releases.
 legacy-compat-deprecated = []
@@ -43,25 +50,21 @@ credential = []
 # default branch of boringSSL. Alternatively, a version of boringSSL that
 # implements the same feature set can be provided by setting
 # `BORING_BSSL{,_FIPS}_SOURCE_PATH` and `BORING_BSSL{,_FIPS}_ASSUME_PATCHED`.
-rpk = ["credential", "boring-sys/rpk"]
+rpk = ["credential", "korecrypto-sys/rpk"]
 
 # Applies a patch to enable `ffi::X509_CHECK_FLAG_UNDERSCORE_WILDCARDS`. This
 # feature is necessary in order to compile the bindings for the default branch
 # of boringSSL. Alternatively, a version of boringSSL that implements the same
 # feature set can be provided by setting `BORING_BSSL{,_FIPS}_SOURCE_PATH` and
 # `BORING_BSSL{,_FIPS}_ASSUME_PATCHED`.
-underscore-wildcards = ["boring-sys/underscore-wildcards"]
-
-# **DO NOT USE** This will be removed without warning in future releases.
-# Alias for 'fips', only for backwards compatibility.
-fips-precompiled = ["fips"]
+underscore-wildcards = ["korecrypto-sys/underscore-wildcards"]
 
 [dependencies]
 bitflags = { workspace = true }
 foreign-types = { workspace = true }
 openssl-macros = { workspace = true }
 libc = { workspace = true }
-boring-sys = { workspace = true }
+korecrypto-sys = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true }

@@ -100,7 +100,7 @@
 extern crate bitflags;
 #[macro_use]
 extern crate foreign_types;
-extern crate boring_sys as ffi;
+extern crate korecrypto_sys as ffi;
 extern crate libc;
 
 #[cfg(test)]
@@ -125,18 +125,23 @@ pub mod aes;
 pub mod asn1;
 pub mod base64;
 pub mod bn;
+pub mod cmac;
 pub mod conf;
 pub mod derive;
 pub mod dh;
+pub mod drbg;
 pub mod dsa;
 pub mod ec;
 pub mod ecdsa;
+pub mod eckcdsa;
 pub mod error;
 pub mod ex_data;
 pub mod fips;
 pub mod hash;
 pub mod hmac;
 pub mod hpke;
+pub mod kcdsa;
+pub mod kdf;
 pub mod memcmp;
 #[cfg(feature = "mlkem")]
 pub mod mlkem;

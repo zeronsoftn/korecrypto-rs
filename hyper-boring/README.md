@@ -1,6 +1,6 @@
-# hyper-boring
+# hyper-korecrypto
 
-[Documentation](https://docs.rs/hyper-boring)
+[Documentation](https://docs.rs/hyper-korecrypto)
 
 Hyper SSL support via BoringSSL.
 

@@ -1,0 +1,31 @@
+# korecrypto-sys 의 picolibc(UEFI) 연동을 x86_64-unknown-uefi 타깃으로 실제 링크까지
+# 검증하기 위한 최소 UEFI 애플리케이션. 메인 워크스페이스(host 타깃 빌드)와 섞이지
+# 않도록 독립 워크스페이스로 둔다.
+[package]
+name = "uefi-smoketest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "uefi-smoketest"
+path = "src/main.rs"
+
+[dependencies]
+# UEFI 런타임: 전역 할당자 + panic 핸들러를 제공한다.
+uefi = { version = "0.37", features = ["alloc", "global_allocator", "panic_handler", "logger"] }
+# 검증 대상: FIPS + picolibc(freestanding libc) 로 빌드된 BoringSSL FFI.
+korecrypto-sys = { path = "../boring-sys", default-features = false, features = ["fips", "picolibc", "uefi"] }
+log = { version = "0.4.33", default-features = false }
+# picolibc 를 직접 참조해 링크에 끌어들이고, malloc/free/... 를 Rust 전역
+# 할당자(uefi 의 global_allocator)에 위임하도록 malloc feature 를 켠다.
+picolibc = { version = "0.0.5", features = ["bindings", "malloc", "coff", "posix-console", "fast-bufio"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+# 독립 워크스페이스 표시(상위 워크스페이스에 흡수되지 않게 한다).
+[workspace]

@@ -42,9 +42,9 @@ generic_foreign_type_and_impl_send_sync! {
     /// # Examples
     ///
     /// ```
-    /// use boring::dsa::Dsa;
-    /// use boring::error::ErrorStack;
-    /// use boring::pkey::Private;
+    /// use korecrypto::dsa::Dsa;
+    /// use korecrypto::error::ErrorStack;
+    /// use korecrypto::pkey::Private;
     ///
     /// fn create_dsa() -> Result<Dsa<Private>, ErrorStack> {
     ///     let sign = Dsa::generate(2048)?;

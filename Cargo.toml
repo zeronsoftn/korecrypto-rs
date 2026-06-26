@@ -10,7 +10,7 @@ resolver = "2"
 [workspace.package]
 version = "5.2.0"
 rust-version = "1.85"
-repository = "https://github.com/cloudflare/boring"
+repository = "https://github.com/zeronsoftn/korecrypto"
 edition = "2021"
 
 [workspace.metadata.release]
@@ -20,9 +20,11 @@ tag-prefix = ""
 publish = false
 
 [workspace.dependencies]
-boring-sys = { version = "5.2.0", path = "./boring-sys", default-features = false }
-boring = { version = "5.2.0", path = "./boring", default-features = false }
-tokio-boring = { version = "5.2.0", path = "./tokio-boring", default-features = false }
+korecrypto-sys = { version = "5.2.0", path = "./boring-sys", default-features = false }
+korecrypto = { version = "5.2.0", path = "./boring", default-features = false }
+tokio-korecrypto = { version = "5.2.0", path = "./tokio-boring", default-features = false }
+
+picolibc = { version = "0.0.5" }
 
 bindgen = { version = "0.72.0", default-features = false, features = ["runtime"] }
 bitflags = "2.9"

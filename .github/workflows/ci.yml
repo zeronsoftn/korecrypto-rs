@@ -71,7 +71,7 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all --all-targets --features rpk,prf,mlkem
       - name: Check docs
-        run: cargo doc --no-deps -p boring -p boring-sys -p hyper-boring -p tokio-boring --features rpk,underscore-wildcards
+        run: cargo doc --no-deps -p korecrypto -p korecrypto-sys -p hyper-korecrypto -p tokio-korecrypto --features rpk,underscore-wildcards
         env:
           CARGO_BUILD_RUSTDOCFLAGS: "--cfg=docsrs"
           RUSTC_BOOTSTRAP: 1
@@ -208,7 +208,7 @@ jobs:
             LIBRARY_PATH: "C:\\msys64\\usr\\lib"
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: i686-mingw
           target: i686-pc-windows-gnu
           rust: stable
@@ -219,7 +219,7 @@ jobs:
             CMAKE_GENERATOR: "MinGW Makefiles"
             COLLECT_GCC: null
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: i686-msvc
           target: i686-pc-windows-msvc
           rust: stable-x86_64-msvc
@@ -228,7 +228,7 @@ jobs:
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
             CXXFLAGS: -msse2
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: x86_64-msvc
           target: x86_64-pc-windows-msvc
           rust: stable-x86_64-msvc
@@ -236,7 +236,7 @@ jobs:
           custom_env:
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: x86_64-msvc-static
           target: x86_64-pc-windows-msvc
           rust: stable-x86_64-msvc
@@ -245,7 +245,7 @@ jobs:
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
             RUSTFLAGS: -Dwarnings -C target-feature=+crt-static
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
     env:
       CARGO_HOME: ${{ github.workspace }}/.cache/cargo
       CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/.cache/build-dir
@@ -348,19 +348,19 @@ jobs:
       run: cargo test --target ${{ matrix.target }} ${{ matrix.extra_test_args }}
       shell: bash
       env: ${{ matrix.custom_env }}
-    - name: Test boring-sys cargo publish
+    - name: Test korecrypto-sys cargo publish
       if: "matrix.thing != 'i686-mingw' && matrix.thing != 'i686-msvc' && matrix.thing != 'x86_64-mingw'" # slowest builds
       # Running `cargo publish --dry-run` tests two things:
       #
-      # 1. That `boring-sys` can build BoringSSL with just the files included
+      # 1. That `korecrypto-sys` can build BoringSSL with just the files included
       #    in the crates.io package (as determined by the `include` field in
       #    the `Cargo.toml`).
-      # 2. That the final `boring-sys` package size, including the BoringSSL
+      # 2. That the final `korecrypto-sys` package size, including the BoringSSL
       #    submodules, is not too large to be published to `crates.io`.
       #
       # Both of these may no longer be the case after updating the BoringSSL
       # submodules to a new revision, so it's important to test this on CI.
-      run: cargo publish --dry-run --target ${{ matrix.target }} -p boring-sys
+      run: cargo publish --dry-run --target ${{ matrix.target }} -p korecrypto-sys
       shell: bash
       env: ${{ matrix.custom_env }}
 
@@ -380,18 +380,18 @@ jobs:
         go-version: '>=1.22.0'
     - name: Run tests
       run: cargo test --features fips
-    - name: Test boring-sys cargo publish (FIPS)
+    - name: Test korecrypto-sys cargo publish (FIPS)
       # Running `cargo publish --dry-run` tests two things:
       #
-      # 1. That `boring-sys` can build BoringSSL with just the files included
+      # 1. That `korecrypto-sys` can build BoringSSL with just the files included
       #    in the crates.io package (as determined by the `include` field in
       #    the `Cargo.toml`).
-      # 2. That the final `boring-sys` package size, including the BoringSSL
+      # 2. That the final `korecrypto-sys` package size, including the BoringSSL
       #    submodules, is not too large to be published to `crates.io`.
       #
       # Both of these may no longer be the case after updating the BoringSSL
       # submodules to a new revision, so it's important to test this on CI.
-      run: cargo publish --dry-run -p boring-sys --features fips
+      run: cargo publish --dry-run -p korecrypto-sys --features fips
 
   test-boringssl:
     name: Test BoringSSL upstream test suite
@@ -406,8 +406,8 @@ jobs:
         go-version: '>=1.22.0'
     - name: Install build tools (ninja, cmake)
       run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
-    - name: Apply boring-sys patches
-      working-directory: boring-sys/deps/boringssl
+    - name: Apply korecrypto-sys patches
+      working-directory: korecrypto-sys/deps/boringssl
       run: |
         for p in boring-pq.patch rpk.patch underscore-wildcards.patch; do
           echo "Applying $p"

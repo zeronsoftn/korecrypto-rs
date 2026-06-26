@@ -4,3 +4,6 @@ Cargo.lock
 *.iml
 .vscode/
 .DS_Store
+# CAVP 시험 하네스·자료는 추적하지 않는다(KCMVP 시험벡터 생성 도구).
+/cavp-test/
+/samples/

@@ -5,7 +5,7 @@
 //! Encrypt data in AES128 CBC mode
 //!
 //! ```
-//! use boring::symm::{encrypt, Cipher};
+//! use korecrypto::symm::{encrypt, Cipher};
 //!
 //! let cipher = Cipher::aes_128_cbc();
 //! let data = b"Some Crypto Text";
@@ -26,8 +26,8 @@
 //! Encrypting an asymmetric key with a symmetric cipher
 //!
 //! ```
-//! use boring::rsa::{Padding, Rsa};
-//! use boring::symm::Cipher;
+//! use korecrypto::rsa::{Padding, Rsa};
+//! use korecrypto::symm::Cipher;
 //!
 //! // Generate keypair and encrypt private key:
 //! let keypair = Rsa::generate(2048).unwrap();
@@ -228,6 +228,165 @@ impl Cipher {
         unsafe { Cipher(ffi::EVP_aes_256_ofb()) }
     }
 
+    /// ARIA (KS X 1213 / RFC 5794), a KCMVP validation-target block cipher.
+    #[must_use]
+    pub fn aria_128_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_ecb()) }
+    }
+
+    #[must_use]
+    pub fn aria_128_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_cbc()) }
+    }
+
+    #[must_use]
+    pub fn aria_128_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_ctr()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_ecb()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_cbc()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_ctr()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_ecb()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_cbc()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_ctr()) }
+    }
+
+    #[must_use]
+    pub fn aria_128_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_gcm()) }
+    }
+
+    #[must_use]
+    pub fn aria_192_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_gcm()) }
+    }
+
+    #[must_use]
+    pub fn aria_256_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_gcm()) }
+    }
+
+    /// LEA (KS X 3246 / ISO 29192-2), a KCMVP validation-target block cipher.
+    #[must_use]
+    pub fn lea_128_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_ecb()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_cbc()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_ctr()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_gcm()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_ecb()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_cbc()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_ctr()) }
+    }
+
+    #[must_use]
+    pub fn lea_192_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_gcm()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_ecb()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_cbc()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_ctr()) }
+    }
+
+    #[must_use]
+    pub fn lea_256_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_gcm()) }
+    }
+
+    /// SEED (KS X 1213-1 / RFC 4269), a KCMVP validation-target block cipher.
+    #[must_use]
+    pub fn seed_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_ecb()) }
+    }
+
+    #[must_use]
+    pub fn seed_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_cbc()) }
+    }
+
+    #[must_use]
+    pub fn seed_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_ctr()) }
+    }
+
+    #[must_use]
+    pub fn seed_gcm() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_gcm()) }
+    }
+
+    /// HIGHT (KS X 1213-2), a KCMVP validation-target 64-bit-block cipher.
+    #[must_use]
+    pub fn hight_ecb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_ecb()) }
+    }
+
+    #[must_use]
+    pub fn hight_cbc() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_cbc()) }
+    }
+
+    #[must_use]
+    pub fn hight_ctr() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_ctr()) }
+    }
+
     #[must_use]
     pub fn des_cbc() -> Cipher {
         unsafe { Cipher(ffi::EVP_des_cbc()) }
@@ -324,7 +483,7 @@ unsafe impl Send for Cipher {}
 /// CBC mode.
 ///
 /// ```
-/// use boring::symm::{Cipher, Mode, Crypter};
+/// use korecrypto::symm::{Cipher, Mode, Crypter};
 ///
 /// let plaintexts: [&[u8]; 2] = [b"Some Stream of", b" Crypto Text"];
 /// let key = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
@@ -631,7 +790,7 @@ impl Drop for Crypter {
 /// Encrypt data in AES128 CBC mode
 ///
 /// ```
-/// use boring::symm::{encrypt, Cipher};
+/// use korecrypto::symm::{encrypt, Cipher};
 ///
 /// let cipher = Cipher::aes_128_cbc();
 /// let data = b"Some Crypto Text";
@@ -670,7 +829,7 @@ pub fn encrypt(
 /// Decrypt data in AES128 CBC mode
 ///
 /// ```
-/// use boring::symm::{decrypt, Cipher};
+/// use korecrypto::symm::{decrypt, Cipher};
 ///
 /// let cipher = Cipher::aes_128_cbc();
 /// let data = b"\xB4\xB9\xE7\x30\xD6\xD6\xF7\xDE\x77\x3F\x1C\xFF\xB3\x3E\x44\x5A\x91\xD7\x27\x62\
@@ -785,6 +944,333 @@ mod tests {
         assert_eq!(c.update(&[0u8; 15], &mut [0u8; 15]).unwrap(), 15);
         assert_eq!(c.update(&[0u8; 1], &mut [0u8; 1]).unwrap(), 1);
         assert_eq!(c.finalize(&mut [0u8; 0]).unwrap(), 0);
+    }
+
+    // Test vectors from RFC 5794 Appendix A (ARIA). A single 16-byte block is
+    // encrypted in ECB with padding disabled, then decrypted to verify the
+    // round trip.
+    #[test]
+    fn test_aria_ecb_kat() {
+        let pt = Vec::from_hex("00112233445566778899aabbccddeeff").unwrap();
+        let cases = [
+            (
+                Cipher::aria_128_ecb(),
+                "000102030405060708090a0b0c0d0e0f",
+                "d718fbd6ab644c739da95f3be6451778",
+            ),
+            (
+                Cipher::aria_192_ecb(),
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "26449c1805dbe7aa25a468ce263a9e79",
+            ),
+            (
+                Cipher::aria_256_ecb(),
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                "f92bd7c79fb72e2f2b8f80c1972d24fc",
+            ),
+        ];
+
+        for (cipher, key_hex, ct_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let expected = Vec::from_hex(ct_hex).unwrap();
+
+            let mut enc = Crypter::new(cipher, Mode::Encrypt, &key, None).unwrap();
+            enc.pad(false);
+            let mut out = vec![0; pt.len() + cipher.block_size()];
+            let mut n = enc.update(&pt, &mut out).unwrap();
+            n += enc.finalize(&mut out[n..]).unwrap();
+            out.truncate(n);
+            assert_eq!(out, expected, "ARIA ECB encrypt mismatch");
+
+            let mut dec = Crypter::new(cipher, Mode::Decrypt, &key, None).unwrap();
+            dec.pad(false);
+            let mut back = vec![0; expected.len() + cipher.block_size()];
+            let mut m = dec.update(&expected, &mut back).unwrap();
+            m += dec.finalize(&mut back[m..]).unwrap();
+            back.truncate(m);
+            assert_eq!(back, pt, "ARIA ECB decrypt mismatch");
+        }
+    }
+
+    // ARIA-128-CTR keystream consistency: encrypting then decrypting (with the
+    // same key/IV) must recover the plaintext, and the NID round-trips.
+    #[test]
+    fn test_aria_ctr_roundtrip() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let iv = Vec::from_hex("0f0e0d0c0b0a09080706050403020100").unwrap();
+        let pt = b"KCMVP ARIA-CTR streaming mode test vector!";
+
+        let ct = encrypt(Cipher::aria_128_ctr(), &key, Some(&iv), pt).unwrap();
+        assert_ne!(&ct[..], &pt[..]);
+        let back = decrypt(Cipher::aria_128_ctr(), &key, Some(&iv), &ct).unwrap();
+        assert_eq!(&back[..], &pt[..]);
+    }
+
+    // ARIA-GCM KATs from OpenSSL's evpciph_aria.txt. Covers the 12-byte-IV
+    // fast path, the GHASH IV-derivation path (non-12-byte IVs), 128/256-bit
+    // keys, AAD, and tag verification + tamper detection.
+    #[test]
+    fn test_aria_gcm_kat() {
+        struct V {
+            cipher: Cipher,
+            key: &'static str,
+            iv: &'static str,
+            aad: &'static str,
+            pt: &'static str,
+            ct: &'static str,
+            tag: &'static str,
+        }
+        let pt = "f57af5fd4ae19562976ec57a5a7ad55a5af5c5e5c5fdf5c55ad57a4a7272d57262e9729566ed66e97ac54a4a5a7ad5e15ae5fdd5fd5ac5d56ae56ad5c572d54ae54ac55a956afd6aed5a4ac562957a9516991691d572fd14e97ae962ed7a9f4a955af572e162f57a956666e17ae1f54a95f566d54a66e16e4afd6a9f7ae1c5c55ae5d56afde916c5e94a6ec56695e14afde1148416e94ad57ac5146ed59d1cc5";
+        let aad = "8008315ebf2e6fe020e8f5eb";
+        let cases = [
+            V {
+                cipher: Cipher::aria_128_gcm(),
+                key: "e91e5e75da65554a48181f3846349562",
+                iv: "000020e8f5eb00000000315e",
+                aad,
+                pt,
+                ct: "4d8a9a0675550c704b17d8c9ddc81a5cd6f7da34f2fe1b3db7cb3dfb9697102ea0f3c1fc2dbc873d44bceeae8e4442974ba21ff6789d3272613fb9631a7cf3f14bacbeb421633a90ffbe58c2fa6bdca534f10d0de0502ce1d531b6336e58878278531e5c22bc6c85bbd784d78d9e680aa19031aaf89101d669d7a3965c1f7e16229d7463e0535f4e253f5d18187d40b8ae0f564bd970b5e7e2adfb211e89a953",
+                tag: "5abace3f37f5a736f4be984bbffbedc1",
+            },
+            V {
+                cipher: Cipher::aria_256_gcm(),
+                key: "0c5ffd37a11edc42c325287fc0604f2e3e8cd5671a00fe3216aa5eb105783b54",
+                iv: "000020e8f5eb00000000315e",
+                aad,
+                pt,
+                ct: "6f9e4bcbc8c85fc0128fb1e4a0a20cb9932ff74581f54fc013dd054b19f99371425b352d97d3f337b90b63d1b082adeeea9d2d7391897d591b985e55fb50cb5350cf7d38dc27dda127c078a149c8eb98083d66363a46e3726af217d3a00275ad5bf772c7610ea4c23006878f0ee69a8397703169a419303f40b72e4573714d19e2697df61e7c7252e5abc6bade876ac4961bfac4d5e867afca351a48aed52822",
+                tag: "e210d6ced2cf430ff841472915e7ef48",
+            },
+            // 5-byte IV -> exercises the GHASH-based J0 derivation.
+            V {
+                cipher: Cipher::aria_128_gcm(),
+                key: "e91e5e75da65554a48181f3846349562",
+                iv: "0001020304",
+                aad,
+                pt,
+                ct: "1723ccfc0ed44a12520473cfeb63bc933cd450a943f5f1cba78e19d72f80cc102acc51f2459a06cf6435182b8ddd451f83e13479efe5ec7dfbf16229f4017920fb41457a9b6fe1a401b30b2f332d827ae2f86e962326927c1ed8bfedac1f7a00ddde63bd392a8f28a488ba5974689f8d15b9b1739fb50aae0ff244026ec72064003c621b33ffc8086b0a97eefb70604a2826f6499f6eb12d67a0da03fc8e1482",
+                tag: "ebaa2645bb154542117ee46031aa176e",
+            },
+        ];
+
+        for v in cases {
+            let key = Vec::from_hex(v.key).unwrap();
+            let iv = Vec::from_hex(v.iv).unwrap();
+            let aad = Vec::from_hex(v.aad).unwrap();
+            let pt = Vec::from_hex(v.pt).unwrap();
+            let expected_ct = Vec::from_hex(v.ct).unwrap();
+            let expected_tag = Vec::from_hex(v.tag).unwrap();
+
+            let mut tag = vec![0u8; 16];
+            let ct = encrypt_aead(v.cipher, &key, Some(&iv), &aad, &pt, &mut tag).unwrap();
+            assert_eq!(ct, expected_ct, "ARIA-GCM ciphertext mismatch");
+            assert_eq!(tag, expected_tag, "ARIA-GCM tag mismatch");
+
+            let dec =
+                decrypt_aead(v.cipher, &key, Some(&iv), &aad, &expected_ct, &expected_tag).unwrap();
+            assert_eq!(dec, pt, "ARIA-GCM decrypt mismatch");
+
+            // A corrupted tag must fail authentication.
+            let mut bad_tag = expected_tag.clone();
+            bad_tag[0] ^= 0x01;
+            assert!(
+                decrypt_aead(v.cipher, &key, Some(&iv), &aad, &expected_ct, &bad_tag).is_err(),
+                "ARIA-GCM accepted a forged tag"
+            );
+        }
+    }
+
+    // LEA single-block KATs (generated from the KISA LEA reference for keys
+    // 00..0f / 00..17 / 00..1f and plaintext 10..1f). ECB with padding off.
+    #[test]
+    fn test_lea_ecb_kat() {
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f").unwrap();
+        let cases = [
+            (
+                Cipher::lea_128_ecb(),
+                "000102030405060708090a0b0c0d0e0f",
+                "44ab24c48c1eb0f6e28b2ddd66525d50",
+            ),
+            (
+                Cipher::lea_192_ecb(),
+                "000102030405060708090a0b0c0d0e0f1011121314151617",
+                "e3c74acbabb94bc60299e405266c45e8",
+            ),
+            (
+                Cipher::lea_256_ecb(),
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                "a28c0d3ceb36bced9c8aa4963bf86eaa",
+            ),
+        ];
+
+        for (cipher, key_hex, ct_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let expected = Vec::from_hex(ct_hex).unwrap();
+
+            let mut enc = Crypter::new(cipher, Mode::Encrypt, &key, None).unwrap();
+            enc.pad(false);
+            let mut out = vec![0; pt.len() + cipher.block_size()];
+            let mut n = enc.update(&pt, &mut out).unwrap();
+            n += enc.finalize(&mut out[n..]).unwrap();
+            out.truncate(n);
+            assert_eq!(out, expected, "LEA ECB encrypt mismatch");
+
+            let mut dec = Crypter::new(cipher, Mode::Decrypt, &key, None).unwrap();
+            dec.pad(false);
+            let mut back = vec![0; expected.len() + cipher.block_size()];
+            let mut m = dec.update(&expected, &mut back).unwrap();
+            m += dec.finalize(&mut back[m..]).unwrap();
+            back.truncate(m);
+            assert_eq!(back, pt, "LEA ECB decrypt mismatch");
+        }
+    }
+
+    // LEA-GCM KATs (generated from the KISA LEA GCM reference).
+    #[test]
+    fn test_lea_gcm_kat() {
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let cases = [
+            (
+                Cipher::lea_128_gcm(),
+                "000102030405060708090a0b0c0d0e0f",
+                "4a817a5be960436f4742d9422ca50f190046cfc309b609a29bf999531aab0edf",
+                "38261b223eba708fb8e4150344cae824",
+            ),
+            (
+                Cipher::lea_256_gcm(),
+                "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                "624ad1299fdbc3e7e9645e71df76f483dd530067feb20aa38093ddf803f5ea03",
+                "c4c2f17f155d7bfcd4ca6e360c74bb2a",
+            ),
+        ];
+
+        for (cipher, key_hex, ct_hex, tag_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let expected_ct = Vec::from_hex(ct_hex).unwrap();
+            let expected_tag = Vec::from_hex(tag_hex).unwrap();
+
+            let mut tag = vec![0u8; 16];
+            let ct = encrypt_aead(cipher, &key, Some(&nonce), &aad, &pt, &mut tag).unwrap();
+            assert_eq!(ct, expected_ct, "LEA-GCM ciphertext mismatch");
+            assert_eq!(tag, expected_tag, "LEA-GCM tag mismatch");
+
+            let dec = decrypt_aead(
+                cipher,
+                &key,
+                Some(&nonce),
+                &aad,
+                &expected_ct,
+                &expected_tag,
+            )
+            .unwrap();
+            assert_eq!(dec, pt, "LEA-GCM decrypt mismatch");
+        }
+    }
+
+    // SEED single-block KATs from RFC 4269 (Appendix B). ECB, padding off.
+    #[test]
+    fn test_seed_ecb_kat() {
+        let cases = [
+            (
+                "00000000000000000000000000000000",
+                "000102030405060708090a0b0c0d0e0f",
+                "5ebac6e0054e166819aff1cc6d346cdb",
+            ),
+            (
+                "000102030405060708090a0b0c0d0e0f",
+                "00000000000000000000000000000000",
+                "c11f22f20140505084483597e4370f43",
+            ),
+            (
+                "4706480851e61be85d74bfb3fd956185",
+                "83a2f8a288641fb9a4e9a5cc2f131c7d",
+                "ee54d13ebcae706d226bc3142cd40d4a",
+            ),
+        ];
+        for (key_hex, pt_hex, ct_hex) in cases {
+            let key = Vec::from_hex(key_hex).unwrap();
+            let pt = Vec::from_hex(pt_hex).unwrap();
+            let expected = Vec::from_hex(ct_hex).unwrap();
+
+            let mut enc = Crypter::new(Cipher::seed_ecb(), Mode::Encrypt, &key, None).unwrap();
+            enc.pad(false);
+            let mut out = vec![0; pt.len() + Cipher::seed_ecb().block_size()];
+            let mut n = enc.update(&pt, &mut out).unwrap();
+            n += enc.finalize(&mut out[n..]).unwrap();
+            out.truncate(n);
+            assert_eq!(out, expected, "SEED ECB encrypt mismatch");
+
+            let mut dec = Crypter::new(Cipher::seed_ecb(), Mode::Decrypt, &key, None).unwrap();
+            dec.pad(false);
+            let mut back = vec![0; expected.len() + Cipher::seed_ecb().block_size()];
+            let mut m = dec.update(&expected, &mut back).unwrap();
+            m += dec.finalize(&mut back[m..]).unwrap();
+            back.truncate(m);
+            assert_eq!(back, pt, "SEED ECB decrypt mismatch");
+        }
+    }
+
+    // SEED-GCM KAT (generated from the KISA SEED GCM reference).
+    #[test]
+    fn test_seed_gcm_kat() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let expected_ct =
+            Vec::from_hex("76545855fa87031b929bc66b7fbdbb49301fe4b611cf5e9f540aee1e0a9a474c")
+                .unwrap();
+        let expected_tag = Vec::from_hex("1d35345efcfbb5ed20d842f1bc3f71ed").unwrap();
+
+        let mut tag = vec![0u8; 16];
+        let ct = encrypt_aead(Cipher::seed_gcm(), &key, Some(&nonce), &aad, &pt, &mut tag).unwrap();
+        assert_eq!(ct, expected_ct, "SEED-GCM ciphertext mismatch");
+        assert_eq!(tag, expected_tag, "SEED-GCM tag mismatch");
+        let dec = decrypt_aead(
+            Cipher::seed_gcm(),
+            &key,
+            Some(&nonce),
+            &aad,
+            &expected_ct,
+            &expected_tag,
+        )
+        .unwrap();
+        assert_eq!(dec, pt, "SEED-GCM decrypt mismatch");
+    }
+
+    // HIGHT single-block KAT from the KISA reference (64-bit block). ECB.
+    #[test]
+    fn test_hight_ecb_kat() {
+        let key = Vec::from_hex("88e34f8f081779f1e9f394370ad40589").unwrap();
+        let pt = Vec::from_hex("d76d0d18327ec562").unwrap();
+        let expected = Vec::from_hex("e4bc2e312277e4dd").unwrap();
+
+        let mut enc = Crypter::new(Cipher::hight_ecb(), Mode::Encrypt, &key, None).unwrap();
+        enc.pad(false);
+        let mut out = vec![0; pt.len() + Cipher::hight_ecb().block_size()];
+        let mut n = enc.update(&pt, &mut out).unwrap();
+        n += enc.finalize(&mut out[n..]).unwrap();
+        out.truncate(n);
+        assert_eq!(out, expected, "HIGHT ECB encrypt mismatch");
+
+        let mut dec = Crypter::new(Cipher::hight_ecb(), Mode::Decrypt, &key, None).unwrap();
+        dec.pad(false);
+        let mut back = vec![0; expected.len() + Cipher::hight_ecb().block_size()];
+        let mut m = dec.update(&expected, &mut back).unwrap();
+        m += dec.finalize(&mut back[m..]).unwrap();
+        back.truncate(m);
+        assert_eq!(back, pt, "HIGHT ECB decrypt mismatch");
+
+        // CBC round-trip across multiple blocks.
+        let iv = Vec::from_hex("0001020304050607").unwrap();
+        let data = b"HIGHT 64-bit blk";
+        let ct = encrypt(Cipher::hight_cbc(), &key, Some(&iv), data).unwrap();
+        let back = decrypt(Cipher::hight_cbc(), &key, Some(&iv), &ct).unwrap();
+        assert_eq!(&back[..], &data[..]);
     }
 
     // Test vectors from FIPS-197:

@@ -1,12 +1,12 @@
 [package]
-name = "hyper-boring"
+name = "hyper-korecrypto"
 version = { workspace = true }
 authors = ["Steven Fackler <sfackler@gmail.com>", "Ivan Nikulin <ifaaan@gmail.com>"]
 edition = { workspace = true }
 description = "Hyper TLS support via BoringSSL"
 license = "MIT OR Apache-2.0"
 repository = { workspace = true }
-documentation = "https://docs.rs/hyper-boring"
+documentation = "https://docs.rs/hyper-korecrypto"
 readme = "README.md"
 exclude = ["test/*"]
 rust-version = { workspace = true }
@@ -16,10 +16,10 @@ features = []
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["boring/default", "tokio-boring/default"]
+default = ["korecrypto/default", "tokio-korecrypto/default"]
 
 # Use a FIPS-validated version of boringssl.
-fips = ["boring/fips", "tokio-boring/fips"]
+fips = ["korecrypto/fips", "tokio-korecrypto/fips"]
 
 [dependencies]
 antidote = { workspace = true }
@@ -27,9 +27,9 @@ http = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { workspace = true, features = ["client", "client-legacy"] }
 linked_hash_set = { workspace = true }
-boring = { workspace = true, default-features = false }
+korecrypto = { workspace = true, default-features = false }
 tokio = { workspace = true }
-tokio-boring = { workspace = true, default-features = false  }
+tokio-korecrypto = { workspace = true, default-features = false  }
 tower-layer = { workspace = true }
 tower-service = { workspace = true }
 

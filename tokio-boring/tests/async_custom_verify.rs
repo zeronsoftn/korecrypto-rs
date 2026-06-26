@@ -1,5 +1,7 @@
-use boring::ssl::{BoxCustomVerifyFinish, BoxCustomVerifyFuture, SslAlert, SslRef, SslVerifyMode};
 use futures::future;
+use korecrypto::ssl::{
+    BoxCustomVerifyFinish, BoxCustomVerifyFuture, SslAlert, SslRef, SslVerifyMode,
+};
 use tokio::task::yield_now;
 
 mod common;

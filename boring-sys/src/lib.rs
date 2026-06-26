@@ -1,3 +1,7 @@
+// UEFI 등 freestanding 타깃에서도 쓸 수 있도록 no_std 로 둔다. FFI 바인딩과
+// 상수/도우미 함수만 제공하므로 std 가 필요 없다(core::ffi 로 충분). 표준 라이브러리가
+// 있는 타깃에서도 core::ffi 타입은 std::ffi 와 동일하므로 소비자(boring 등)에 영향 없음.
+#![no_std]
 #![allow(
     clippy::missing_safety_doc,
     clippy::redundant_static_lifetimes,
@@ -11,9 +15,9 @@
     unused_imports
 )]
 
-use std::convert::TryInto;
-use std::ffi::c_void;
-use std::os::raw::{c_char, c_int, c_uint, c_ulong};
+use core::convert::TryInto;
+use core::ffi::c_void;
+use core::ffi::{c_char, c_int, c_uint, c_ulong};
 
 #[allow(
     clippy::useless_transmute,
@@ -70,7 +74,7 @@ pub fn init() {
 
 pub mod internal {
     use super::EVP_MD;
-    use std::os::raw::c_int;
+    use core::ffi::c_int;
 
     extern "C" {
         /// Calculates `out_len` bytes of the TLS 1.2 PRF using `digest` and writes
