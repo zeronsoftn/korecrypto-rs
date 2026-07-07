@@ -406,8 +406,8 @@ jobs:
         go-version: '>=1.22.0'
     - name: Install build tools (ninja, cmake)
       run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
-    - name: Apply korecrypto-sys patches
-      working-directory: korecrypto-sys/deps/boringssl
+    - name: Apply boring-sys patches
+      working-directory: boring-sys/deps/boringssl
       run: |
         for p in boring-pq.patch rpk.patch underscore-wildcards.patch; do
           echo "Applying $p"
