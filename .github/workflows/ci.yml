@@ -55,11 +55,6 @@ jobs:
           enableCrossOsArchive: true
       - name: Fetch dependencies
         run: cargo fetch
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: clippy-${{ steps.rust-version.outputs.version }}-${{ hashFiles('Cargo.lock') }}
       - name: Cache cargo index (save)
         uses: actions/cache/save@v4
         with:

@@ -708,10 +708,21 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
-    let src_path = get_boringssl_source_path(&config);
+
+    // rerun-if-changed 는 반드시 빌드의 "입력" 파일을 가리켜야 한다.
+    // get_boringssl_source_path() 는 source_path 미설정 시 deps/boringssl 을 OUT_DIR 로
+    // 복사한 경로를 돌려주는데, 그 복사본은 매 빌드마다 build.rs 가 새로 만들어 mtime 이
+    // 갱신된다. 복사본을 감시하면 cargo 가 항상 "변경됨"으로 판단해
+    // build.rs 재실행 → 재복사 → ninja 전체 재빌드가 무한 반복된다. 따라서 복사 이전의
+    // 원본 소스(source_path 또는 submodule deps/boringssl)를 감시한다.
+    let watch_src = config
+        .env
+        .source_path
+        .clone()
+        .unwrap_or_else(|| config.manifest_dir.join("deps").join("boringssl"));
     println!(
         "cargo:rerun-if-changed={}",
-        src_path.join("CMakeLists.txt").display()
+        watch_src.join("CMakeLists.txt").display()
     );
     ensure_patches_applied(&config)?;
     if !config.env.docs_rs {
