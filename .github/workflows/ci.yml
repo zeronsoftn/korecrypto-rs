@@ -457,6 +457,43 @@ jobs:
     - name: Build for ${{ matrix.target }}
       run: cargo build --target ${{ matrix.target }} --all-targets
 
+  uefi-kcmvp-smoketest:
+    name: UEFI KCMVP smoketest (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-unknown-uefi
+            qemu_pkg: qemu-system-x86
+            fw_pkg: ovmf
+          - arch: aarch64
+            target: aarch64-unknown-uefi
+            qemu_pkg: qemu-system-arm
+            fw_pkg: qemu-efi-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (stable) + UEFI target
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM 22
+        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+      - name: Install QEMU and UEFI firmware
+        run: sudo apt-get install -y ${{ matrix.qemu_pkg }} ${{ matrix.fw_pkg }}
+      - name: Enable KVM (x86_64)
+        run: |
+          [ ! -e /dev/kvm ] || sudo chmod 0666 /dev/kvm
+      - name: Run UEFI smoketest
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: ./uefi-smoketest/run-qemu.sh
+
   test-features:
     name: Test features
     runs-on: ubuntu-latest

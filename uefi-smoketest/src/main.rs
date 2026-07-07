@@ -36,10 +36,10 @@ unsafe fn poweroff() -> ! {
     }
 }
 
-const PSCI_SYSTEM_OFF: usize = 0x8400_0008;
-
 #[cfg(target_arch = "aarch64")]
 unsafe fn poweroff() -> ! {
+    const PSCI_SYSTEM_OFF: usize = 0x8400_0008;
+
     unsafe {
         asm!(
             "hvc #0",
@@ -104,15 +104,6 @@ core::arch::global_asm!(
     "    ret",
 );
 
-
-const CR0_MP: u64 = 1 << 1;
-const CR0_EM: u64 = 1 << 2;
-const CR0_TS: u64 = 1 << 3;
-const CR0_NE: u64 = 1 << 5;
-
-const CR4_OSFXSR: u64 = 1 << 9;
-const CR4_OSXMMEXCPT: u64 = 1 << 10;
-
 #[cfg(target_arch = "x86_64")]
 #[inline]
 fn read_cr0() -> u64 {
@@ -156,6 +147,7 @@ fn write_cr4(v: u64) {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 #[inline]
 fn bit(v: u64, b: u64) -> u32 {
     ((v & b) != 0) as u32
@@ -163,6 +155,14 @@ fn bit(v: u64, b: u64) -> u32 {
 
 #[cfg(target_arch = "x86_64")]
 pub fn report_and_enable_xmm() {
+    const CR0_MP: u64 = 1 << 1;
+    const CR0_EM: u64 = 1 << 2;
+    const CR0_TS: u64 = 1 << 3;
+    const CR0_NE: u64 = 1 << 5;
+
+    const CR4_OSFXSR: u64 = 1 << 9;
+    const CR4_OSXMMEXCPT: u64 = 1 << 10;
+
     let cr0 = read_cr0();
     let cr4 = read_cr4();
 

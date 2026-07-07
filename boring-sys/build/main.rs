@@ -209,9 +209,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     let src_path = get_boringssl_source_path(config);
     let mut boringssl_cmake = cmake::Config::new(src_path);
 
-    // `.no_default_flags(true)` 이런 오류 방지.
-    boringssl_cmake.no_default_flags(true);
-
     // Visual Studio Generator 에서는 CMAKE_C_COMPILER(clang) 이 무시된다.
     boringssl_cmake.generator("Ninja");
 
@@ -221,8 +218,11 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
         return boringssl_cmake;
     }
 
-    if !config.features.fips {
-        // FIPS 에서는 MSVC 가 아닌 clang 을 사용해야 한다.
+    if config.features.fips {
+        // clang 을 사용하는데 cl 문법이 들어가는 오류 방지.
+        boringssl_cmake.no_default_flags(true);
+    } else {
+        // FIPS 에서는 MSVC 가 아닌 clang 을 사용해야 하기에 FIPS 에서는 제외한다.
 
         if config.target_os == "windows" {
             // Explicitly use the non-debug CRT.

@@ -51,13 +51,20 @@ echo "TARGET_ARCH=${TARGET_ARCH}"
 DEFAULT_QEMU=""
 if [ "${TARGET_ARCH}" == "x86_64" ]; then
   DEFAULT_QEMU=qemu-system-x86_64
-  QEMU_MACHINE="-machine q35 -accel kvm -cpu host"
+  # /dev/kvm 이 존재만 하는 게 아니라 실제로 읽기/쓰기 가능할 때만 KVM 을 쓴다.
+  # (CI 등에서는 노드가 있어도 권한이 없어 -accel kvm 이 실패하므로 TCG 로 폴백.)
+  if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    QEMU_MACHINE_DEFAULT="-machine q35 -accel kvm -cpu qemu64"
+  else
+    QEMU_MACHINE_DEFAULT="-machine q35 -accel tcg -cpu qemu64"
+  fi
+  QEMU_MACHINE="${QEMU_MACHINE:-$QEMU_MACHINE_DEFAULT}"
   OVMF_CODE="${OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
 elif [ "${TARGET_ARCH}" == "aarch64" ]; then
   export PICOLIBC_CLANG_TARGET=aarch64-unknown-windows-gnu
   export KORECRYPTO_CLANG_TARGET=$PICOLIBC_CLANG_TARGET
   DEFAULT_QEMU=qemu-system-aarch64
-  QEMU_MACHINE="-machine virt -accel tcg,thread=multi -cpu cortex-a72 -device virtio-gpu-pci"
+  QEMU_MACHINE=${QEMU_MACHINE:-"-machine virt -accel tcg,thread=multi -cpu cortex-a72"}
   OVMF_CODE="${OVMF_CODE:-/usr/share/AAVMF/AAVMF_CODE.fd}"
 fi
 
@@ -67,7 +74,7 @@ TARGET_DIR="${CARGO_TARGET_DIR:-$SCRIPT_DIR/target}"
 EFI="$TARGET_DIR/${TARGET_TRIPLE}/debug/uefi-smoketest.efi"
 
 echo "[*] building uefi-smoketest (.efi) ..."
-cargo build -p uefi-smoketest --target ${TARGET_TRIPLE}
+cargo build -p uefi-smoketest --target ${TARGET_TRIPLE} ${CARGO_FLAGS:-}
 test -f "$EFI" || { echo "[ERR] .efi not found: $EFI"; exit 1; }
 echo "[*] built: $EFI"
 
@@ -86,6 +93,7 @@ set +e
 # 넉넉한 타임아웃을 준다. PIPESTATUS[0] 로 (tee 가 아니라) QEMU 의 종료코드를 받는다.
 timeout --foreground 600 "$QEMU" \
   $QEMU_MACHINE -m 256 \
+  -display none \
   -drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE" \
   -device virtio-rng-pci \
   -kernel "$EFI" \
