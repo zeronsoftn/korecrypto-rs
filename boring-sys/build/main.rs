@@ -209,19 +209,31 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     let src_path = get_boringssl_source_path(config);
     let mut boringssl_cmake = cmake::Config::new(src_path);
 
+    // `.no_default_flags(true)` 이런 오류 방지.
+    boringssl_cmake.no_default_flags(true);
+
+    // Visual Studio Generator 에서는 CMAKE_C_COMPILER(clang) 이 무시된다.
+    boringssl_cmake.generator("Ninja");
+
+    boringssl_cmake.define("CMAKE_SUPPRESS_REGENERATION", "ON");
+
     if config.env.cmake_toolchain_file.is_some() {
         return boringssl_cmake;
     }
 
-    if config.target_os == "windows" {
-        // Explicitly use the non-debug CRT.
-        // This is required now because newest BoringSSL requires CMake 3.22 which
-        // uses the new logic with CMAKE_MSVC_RUNTIME_LIBRARY introduced in CMake 3.15.
-        // https://github.com/rust-lang/cmake-rs/pull/30#issuecomment-2969758499
-        if config.target_features.iter().any(|f| f == "crt-static") {
-            boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
-        } else {
-            boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
+    if !config.features.fips {
+        // FIPS 에서는 MSVC 가 아닌 clang 을 사용해야 한다.
+
+        if config.target_os == "windows" {
+            // Explicitly use the non-debug CRT.
+            // This is required now because newest BoringSSL requires CMake 3.22 which
+            // uses the new logic with CMAKE_MSVC_RUNTIME_LIBRARY introduced in CMake 3.15.
+            // https://github.com/rust-lang/cmake-rs/pull/30#issuecomment-2969758499
+            if config.target_features.iter().any(|f| f == "crt-static") {
+                boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
+            } else {
+                boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
+            }
         }
     }
 
@@ -604,6 +616,9 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
             cfg.define("CMAKE_C_COMPILER", "clang")
                 .define("CMAKE_CXX_COMPILER", "clang++")
                 .define("CMAKE_ASM_COMPILER", "clang")
+                .define("CMAKE_C_FLAGS", "")
+                .define("CMAKE_CXX_FLAGS", "")
+                .define("CMAKE_ASM_FLAGS", "")
                 .define("FIPS", "1");
         }
 
