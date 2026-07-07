@@ -10,6 +10,9 @@ use crate::hash::MessageDigest;
 use foreign_types::{ForeignType, ForeignTypeRef};
 use std::ptr;
 
+/// KCDSA 도메인 파라미터 (P, Q, G) 빅엔디안 바이트열.
+pub type Params = (Vec<u8>, Vec<u8>, Vec<u8>);
+
 foreign_type_and_impl_send_sync! {
     type CType = ffi::KCDSA_KEY;
     fn drop = ffi::KCDSA_KEY_free;
@@ -145,7 +148,7 @@ impl KcdsaKeyRef {
     }
 
     /// 도메인 파라미터 (P, Q, G)를 빅엔디안으로 반환한다.
-    pub fn params(&self) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), ErrorStack> {
+    pub fn params(&self) -> Result<Params, ErrorStack> {
         let mut p = vec![0u8; 512];
         let mut q = vec![0u8; 64];
         let mut g = vec![0u8; 512];

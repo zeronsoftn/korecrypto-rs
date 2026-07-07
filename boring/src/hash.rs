@@ -487,7 +487,7 @@ mod tests {
                 h.update(chunk).unwrap();
             }
             let chunked = h.finish().unwrap();
-            assert_eq!(hex::encode(&oneshot), hex::encode(&chunked));
+            assert_eq!(hex::encode(oneshot), hex::encode(chunked));
         }
     }
 
