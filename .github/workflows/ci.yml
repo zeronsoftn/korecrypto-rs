@@ -319,7 +319,7 @@ jobs:
         echo >> $GITHUB_ENV LDFLAGS="-L$MSYS_ROOT\\mingw32\\lib"
     - name: Install LLVM and Clang
       if: startsWith(matrix.os, 'windows')
-      uses: KyleMayes/install-llvm-action@v1
+      uses: KyleMayes/install-llvm-action@v2
       with:
         version: "11.0"
         directory: ${{ runner.temp }}/llvm
@@ -488,10 +488,11 @@ jobs:
         #   - llvm-12: 최신 Windows SDK 의 msvcrtd.lib 가 참조하는 EH continuation guard
         #     심볼(__guard_eh_cont_table/_count)을 lld-link 가 합성하지 못해 링크 실패
         #     (해당 합성은 lld-link 13+).
+        #   - llvm-21: 이전 버전은 regex check 에서 실패한다.
         if: startsWith(matrix.os, 'windows')
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "13.0"
+          version: "21.1"
           directory: ${{ runner.temp }}/llvm
       - name: Set LIBCLANG_PATH (Windows)
         if: startsWith(matrix.os, 'windows')
