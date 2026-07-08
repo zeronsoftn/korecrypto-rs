@@ -96,12 +96,17 @@
 //! Presently all these key agreements are deployed by Cloudflare, but we do not guarantee continued
 //! support for them.
 
+#[cfg(all(feature = "std-libc", not(feature = "picolibc")))]
+extern crate libc;
+
+#[cfg(feature = "picolibc")]
+extern crate picolibc as libc;
+
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate foreign_types;
 extern crate korecrypto_sys as ffi;
-extern crate libc;
 
 #[cfg(test)]
 extern crate hex;

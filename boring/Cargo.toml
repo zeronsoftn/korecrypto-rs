@@ -19,7 +19,9 @@ features = ["rpk", "underscore-wildcards"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = []
+default = ["std-libc"]
+
+std-libc = ["dep:libc"]
 
 # Use a FIPS-validated version of BoringSSL.
 fips = ["korecrypto-sys/fips"]
@@ -27,7 +29,7 @@ fips = ["korecrypto-sys/fips"]
 # baremetal
 uefi = ["korecrypto-sys/uefi", "baremetal"]
 baremetal = ["korecrypto-sys/baremetal", "picolibc"]
-picolibc = ["korecrypto-sys/picolibc"]
+picolibc = ["korecrypto-sys/picolibc", "dep:picolibc"]
 
 # **DO NOT USE** This will be removed without warning in future releases.
 legacy-compat-deprecated = []
@@ -63,7 +65,8 @@ underscore-wildcards = ["korecrypto-sys/underscore-wildcards"]
 bitflags = { workspace = true }
 foreign-types = { workspace = true }
 openssl-macros = { workspace = true }
-libc = { workspace = true }
+libc = { workspace = true, optional = true }
+picolibc = { workspace = true, optional = true }
 korecrypto-sys = { workspace = true }
 
 [dev-dependencies]

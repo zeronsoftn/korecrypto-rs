@@ -611,15 +611,22 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
             cfg.env("CMAKE_BUILD_PARALLEL_LEVEL", num_jobs);
         }
 
-        // FIPS 는 delocate 등을 위해 clang 을 강제한다.
-        if config.features.fips {
+        // FIPS(delocate)와 picolibc(freestanding + USE_CUSTOM_LIBCXX)은 clang 을
+        // 강제한다. cc-rs 가 기본 주입하는 플래그(예: uefi→windows-gnu 로의 `--target`)도
+        // 비워 CMAKE_*_COMPILER_TARGET 으로만 타깃을 지정하게 한다. 이 초기화가 없으면
+        // 비-FIPS UEFI 빌드에서 CMake 가 컴파일러를 GNU 로 인식해 USE_CUSTOM_LIBCXX 검사가
+        // 실패한다. (컴파일러는 PATH 상의 clang — UEFI 는 clang>=19 필요하므로 호출부가
+        // PATH/CC 로 clang-22 등을 지정한다.)
+        if config.features.fips || config.features.picolibc {
             cfg.define("CMAKE_C_COMPILER", "clang")
                 .define("CMAKE_CXX_COMPILER", "clang++")
                 .define("CMAKE_ASM_COMPILER", "clang")
                 .define("CMAKE_C_FLAGS", "")
                 .define("CMAKE_CXX_FLAGS", "")
-                .define("CMAKE_ASM_FLAGS", "")
-                .define("FIPS", "1");
+                .define("CMAKE_ASM_FLAGS", "");
+        }
+        if config.features.fips {
+            cfg.define("FIPS", "1");
         }
 
         // bare-metal(freestanding, picolibc) 빌드는 crypto 만 빌드한다. ssl 은 소켓/

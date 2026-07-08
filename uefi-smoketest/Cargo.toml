@@ -19,7 +19,7 @@ korecrypto-sys = { path = "../boring-sys", default-features = false, features = 
 log = { version = "0.4.33", default-features = false }
 # picolibc 를 직접 참조해 링크에 끌어들이고, malloc/free/... 를 Rust 전역
 # 할당자(uefi 의 global_allocator)에 위임하도록 malloc feature 를 켠다.
-picolibc = { version = "0.0.6", features = ["bindings", "malloc", "coff", "posix-console", "fast-bufio"] }
+picolibc = { version = "0.0.7", features = ["bindings", "malloc", "coff", "posix-console", "fast-bufio"] }
 
 [profile.dev]
 panic = "abort"
