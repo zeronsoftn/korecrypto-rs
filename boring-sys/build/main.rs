@@ -261,19 +261,26 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     if config.features.fips {
         // clang 을 사용하는데 cl 문법이 들어가는 오류 방지.
         boringssl_cmake.no_default_flags(true);
-    } else {
-        // FIPS 에서는 MSVC 가 아닌 clang 을 사용해야 하기에 FIPS 에서는 제외한다.
+    }
 
-        if config.target_os == "windows" {
-            // Explicitly use the non-debug CRT.
-            // This is required now because newest BoringSSL requires CMake 3.22 which
-            // uses the new logic with CMAKE_MSVC_RUNTIME_LIBRARY introduced in CMake 3.15.
-            // https://github.com/rust-lang/cmake-rs/pull/30#issuecomment-2969758499
-            if config.target_features.iter().any(|f| f == "crt-static") {
-                boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
-            } else {
-                boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
-            }
+    // CRT(런타임 라이브러리) 선택. windows-msvc 타깃(cl, 또는 MSVC ABI 를
+    // 시뮬레이트하는 clang)에서만 적용한다. CMake 는 Debug config + 기본값
+    // MultiThreadedDLL 로 항상 런타임 라이브러리 플래그(/MDd 상당: _DLL+_DEBUG,
+    // --dependent-lib=msvcrtd)를 주입하므로, 이를 -fms-runtime-lib 같은 컴파일
+    // 플래그로 덮어쓰려 하면 두 CRT 가 동시에 링크되어 깨진다. 반드시 CMake 의
+    // CMAKE_MSVC_RUNTIME_LIBRARY 추상화로 제어해야 한다. +crt-static 인 rust 는
+    // 정적 릴리스 CRT(libcmt)로 링크하므로 boringssl 도 MultiThreaded 로 맞춘다
+    // (그렇지 않으면 __imp_*/_wassert/_CrtDbgReport 미해결 심볼 발생).
+    //
+    // windows-gnu(예: msys CLANG64, SIMULATE_ID=GNU)에는 적용하지 않는다. 그쪽
+    // clang 은 MSVC 런타임 추상화를 지원하지 않아 CMAKE_MSVC_RUNTIME_LIBRARY 가
+    // 빌드를 깨뜨린다. (FIPS 여부와 무관하게 msvc 환경이면 필요하다.)
+    // https://github.com/rust-lang/cmake-rs/pull/30#issuecomment-2969758499
+    if config.target_os == "windows" && config.target_env == "msvc" {
+        if config.target_features.iter().any(|f| f == "crt-static") {
+            boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
+        } else {
+            boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
         }
     }
 
@@ -839,6 +846,14 @@ fn emit_link_directives(config: &Config) {
     if config.target_os == "windows" {
         // Rust 1.87.0 compat - https://github.com/rust-lang/rust/pull/138233
         println!("cargo:rustc-link-lib=advapi32");
+    }
+
+    // FIPS windows-msvc 빌드는 _NO_CRT_STDIO_INLINE 로 stdio 인라인을 끈다(모듈 .text 에
+    // CRT 글루가 박혀 무결성 해시가 깨지는 것을 막기 위함 — build_boringssl 참고). 그러면
+    // UCRT 의 레거시 named 심볼(_vsnprintf 등)이 인라인으로 제공되지 않아, 이를 공급하는
+    // legacy_stdio_definitions 를 최종 링크에 추가해야 한다(모듈 밖 함수라 해시엔 무관).
+    if config.features.fips && config.target_os == "windows" && config.target_env == "msvc" {
+        println!("cargo:rustc-link-lib=legacy_stdio_definitions");
     }
 }
 
