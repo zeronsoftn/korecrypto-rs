@@ -202,6 +202,46 @@ fn msvc_lib_subdir(config: &Config) -> Option<&'static str> {
     }
 }
 
+/// FIPS 크로스(리눅스) 빌드에서 clang 이 사용할 GNU `ld` 경로를 결정한다.
+///
+/// FIPS 는 clang 을 강제하는데 clang 은 rust 트리플용 prefix ld 를 못 찾아 호스트 ld 로
+/// 폴백한다. 여기서는 cargo/CI 에 설정된 "대상 링커"(= rust 최종 링크에 쓰는 크로스 gcc)
+/// 에게 `-print-prog-name=ld` 로 그 gcc 가 쓰는 ld 의 절대경로를 물어본다. 이 ld 를
+/// clang(`-fuse-ld=`)과 최종 rust 링크 양쪽에 쓰면 크로스 링크가 되고 무결성 해시도
+/// 일치한다. 절대경로를 하드코딩하지 않고 툴체인에서 동적으로 얻는다.
+fn resolve_target_ld(config: &Config) -> Option<String> {
+    let target_us = config.target.replace('-', "_");
+    let target_env = target_us.to_uppercase();
+
+    // 대상 gcc 후보: 1) cargo 링커 설정(env 형태), 2) cc-rs 형태 CC_<target>,
+    // 3) rust 트리플에서 유도한 GNU 트리플(aarch64-unknown-linux-gnu → aarch64-linux-gnu-gcc).
+    let mut candidates: Vec<String> = [
+        std::env::var(format!("CARGO_TARGET_{target_env}_LINKER")).ok(),
+        std::env::var(format!("CC_{}", config.target)).ok(),
+        std::env::var(format!("CC_{target_us}")).ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    candidates.push(format!("{}-gcc", config.target.replace("-unknown-", "-")));
+
+    for cc in candidates {
+        let Ok(output) = Command::new(&cc).arg("-print-prog-name=ld").output() else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let ld = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // gcc 가 자신의 ld 를 해소하면 절대경로를 준다. 해소 못 하면 그냥 "ld" 라
+        // 돌려주므로(호스트 ld) 경로 형태일 때만 채택한다.
+        if ld.contains('/') {
+            return Some(ld);
+        }
+    }
+    None
+}
+
 /// Returns a new `cmake::Config` for building BoringSSL.
 ///
 /// It will add platform-specific parameters if needed.
@@ -248,6 +288,29 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
             .define("CMAKE_C_COMPILER_TARGET", &clang_target)
             .define("CMAKE_CXX_COMPILER_TARGET", &clang_target)
             .define("CMAKE_ASM_COMPILER_TARGET", &clang_target);
+
+        // FIPS 는 clang 을 강제한다(아래 build 단계). 리눅스 크로스에서 clang 은 rust
+        // 트리플용 prefix ld(예: aarch64-unknown-linux-gnu-ld)를 못 찾아 호스트 ld 로
+        // 폴백해 링크가 깨지고, 무결성 해시도 최종 rust 링크(GNU ld)와 어긋난다. 대상
+        // 링커(= cargo/CI 에 설정된 크로스 gcc)에게 물어본 ld 경로를 clang 의 `-fuse-ld`
+        // 로 넘겨(모든 링크 단계 = compiler test/공유객체/실행), 최종 rust 링크와 동일한
+        // ld 를 쓰게 한다. cmake 툴체인 파일은 수정하지 않는다(하드코딩 X, 단일 지점).
+        if config.features.fips && config.target_os == "linux" {
+            if let Some(ld) = resolve_target_ld(config) {
+                let fuse_ld = format!("-fuse-ld={ld}");
+                boringssl_cmake
+                    .define("CMAKE_EXE_LINKER_FLAGS", &fuse_ld)
+                    .define("CMAKE_SHARED_LINKER_FLAGS", &fuse_ld)
+                    .define("CMAKE_MODULE_LINKER_FLAGS", &fuse_ld);
+            } else {
+                let t_env = config.target.to_uppercase().replace('-', "_");
+                println!(
+                    "cargo:warning=FIPS cross build: 대상 링커의 `ld` 를 찾지 못했습니다. \
+                     CARGO_TARGET_{t_env}_LINKER 또는 CC_{} 를 크로스 gcc 로 설정하세요.",
+                    config.target
+                );
+            }
+        }
     }
 
     if !config.features.fips {
@@ -905,6 +968,7 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "hrss.h",
         "md4.h",
         "md5.h",
+        "mldsa.h",
         "mlkem.h",
         "obj_mac.h",
         "objects.h",
@@ -913,7 +977,9 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "rc4.h",
         "ripemd.h",
         "siphash.h",
+        "slhdsa.h",
         "srtp.h",
+        "tls_prf.h",
         "trust_token.h",
     ];
     for (i, header) in must_have_headers.into_iter().chain(headers).enumerate() {
