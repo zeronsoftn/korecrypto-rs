@@ -387,6 +387,223 @@ impl Cipher {
         unsafe { Cipher(ffi::EVP_hight_ctr()) }
     }
 
+    // === OFB / CFB(1/8/32/64/128) 스트림 모드 (KCMVP CAVP) ===
+    // CFB1 은 비트 단위 입력을 위해 Crypter::set_flags(EVP_CIPH_FLAG_LENGTH_BITS)
+    // 와 Crypter::update_bits 를 함께 사용한다.
+
+    #[must_use]
+    pub fn aes_128_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_128_cfb128()) }
+    }
+    #[must_use]
+    pub fn aes_192_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_192_cfb128()) }
+    }
+    #[must_use]
+    pub fn aes_256_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_256_cfb128()) }
+    }
+    #[must_use]
+    pub fn aes_128_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_128_cfb64()) }
+    }
+    #[must_use]
+    pub fn aes_192_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_192_cfb64()) }
+    }
+    #[must_use]
+    pub fn aes_256_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_256_cfb64()) }
+    }
+    #[must_use]
+    pub fn aes_128_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_128_cfb8()) }
+    }
+    #[must_use]
+    pub fn aes_192_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_192_cfb8()) }
+    }
+    #[must_use]
+    pub fn aes_256_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_256_cfb8()) }
+    }
+    #[must_use]
+    pub fn aes_128_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_128_cfb1()) }
+    }
+    #[must_use]
+    pub fn aes_192_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_192_cfb1()) }
+    }
+    #[must_use]
+    pub fn aes_256_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aes_256_cfb1()) }
+    }
+
+    #[must_use]
+    pub fn aria_128_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_ofb()) }
+    }
+    #[must_use]
+    pub fn aria_192_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_ofb()) }
+    }
+    #[must_use]
+    pub fn aria_256_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_ofb()) }
+    }
+    #[must_use]
+    pub fn aria_128_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_cfb128()) }
+    }
+    #[must_use]
+    pub fn aria_192_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_cfb128()) }
+    }
+    #[must_use]
+    pub fn aria_256_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_cfb128()) }
+    }
+    #[must_use]
+    pub fn aria_128_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_cfb64()) }
+    }
+    #[must_use]
+    pub fn aria_192_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_cfb64()) }
+    }
+    #[must_use]
+    pub fn aria_256_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_cfb64()) }
+    }
+    #[must_use]
+    pub fn aria_128_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_cfb8()) }
+    }
+    #[must_use]
+    pub fn aria_192_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_cfb8()) }
+    }
+    #[must_use]
+    pub fn aria_256_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_cfb8()) }
+    }
+    #[must_use]
+    pub fn aria_128_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_128_cfb1()) }
+    }
+    #[must_use]
+    pub fn aria_192_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_192_cfb1()) }
+    }
+    #[must_use]
+    pub fn aria_256_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_aria_256_cfb1()) }
+    }
+
+    #[must_use]
+    pub fn lea_128_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_ofb()) }
+    }
+    #[must_use]
+    pub fn lea_192_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_ofb()) }
+    }
+    #[must_use]
+    pub fn lea_256_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_ofb()) }
+    }
+    #[must_use]
+    pub fn lea_128_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_cfb128()) }
+    }
+    #[must_use]
+    pub fn lea_192_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_cfb128()) }
+    }
+    #[must_use]
+    pub fn lea_256_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_cfb128()) }
+    }
+    #[must_use]
+    pub fn lea_128_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_cfb64()) }
+    }
+    #[must_use]
+    pub fn lea_192_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_cfb64()) }
+    }
+    #[must_use]
+    pub fn lea_256_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_cfb64()) }
+    }
+    #[must_use]
+    pub fn lea_128_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_cfb8()) }
+    }
+    #[must_use]
+    pub fn lea_192_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_cfb8()) }
+    }
+    #[must_use]
+    pub fn lea_256_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_cfb8()) }
+    }
+    #[must_use]
+    pub fn lea_128_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_128_cfb1()) }
+    }
+    #[must_use]
+    pub fn lea_192_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_192_cfb1()) }
+    }
+    #[must_use]
+    pub fn lea_256_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_lea_256_cfb1()) }
+    }
+
+    #[must_use]
+    pub fn seed_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_ofb()) }
+    }
+    #[must_use]
+    pub fn seed_cfb128() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_cfb128()) }
+    }
+    #[must_use]
+    pub fn seed_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_cfb64()) }
+    }
+    #[must_use]
+    pub fn seed_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_cfb8()) }
+    }
+    #[must_use]
+    pub fn seed_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_seed_cfb1()) }
+    }
+
+    #[must_use]
+    pub fn hight_ofb() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_ofb()) }
+    }
+    #[must_use]
+    pub fn hight_cfb64() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_cfb64()) }
+    }
+    #[must_use]
+    pub fn hight_cfb32() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_cfb32()) }
+    }
+    #[must_use]
+    pub fn hight_cfb8() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_cfb8()) }
+    }
+    #[must_use]
+    pub fn hight_cfb1() -> Cipher {
+        unsafe { Cipher(ffi::EVP_hight_cfb1()) }
+    }
+
     #[must_use]
     pub fn des_cbc() -> Cipher {
         unsafe { Cipher(ffi::EVP_des_cbc()) }
@@ -618,6 +835,41 @@ impl Crypter {
     pub fn pad(&mut self, padding: bool) {
         unsafe {
             ffi::EVP_CIPHER_CTX_set_padding(self.ctx, c_int::from(padding));
+        }
+    }
+
+    /// ORs `flags` (e.g. `EVP_CIPH_FLAG_LENGTH_BITS`) into the context flags.
+    pub fn set_flags(&mut self, flags: i32) {
+        unsafe {
+            ffi::EVP_CIPHER_CTX_set_flags(self.ctx, flags as u32);
+        }
+    }
+
+    /// Processes `nbits` bits from `input` (MSB-first packed, ceil(nbits/8)
+    /// bytes) into `output`, for bit-oriented stream modes such as CFB1.
+    /// Requires `EVP_CIPH_FLAG_LENGTH_BITS` to have been set via `set_flags`.
+    ///
+    /// # Panics
+    /// Panics if `input`/`output` hold fewer than `ceil(nbits/8)` bytes.
+    pub fn update_bits(
+        &mut self,
+        input: &[u8],
+        nbits: usize,
+        output: &mut [u8],
+    ) -> Result<usize, ErrorStack> {
+        unsafe {
+            let nbytes = nbits.div_ceil(8);
+            assert!(input.len() >= nbytes);
+            assert!(output.len() >= nbytes);
+            let mut outl = try_int(output.len())?;
+            cvt(ffi::EVP_CipherUpdate(
+                self.ctx,
+                output.as_mut_ptr(),
+                &mut outl,
+                input.as_ptr(),
+                try_int(nbits)?,
+            ))?;
+            Ok(outl as usize)
         }
     }
 
@@ -1650,5 +1902,89 @@ mod tests {
             let name = t.cipher.nid().short_name().unwrap_or("unknown");
             assert_eq!(t.cipher.nid().as_raw(), t.nid, "{}", name);
         }
+    }
+
+    // NIST SP 800-38A F.4.1 AES-128 OFB 첫 블록 (EVP 경로).
+    #[test]
+    fn test_aria_ofb_roundtrip_and_aes_ofb_kat() {
+        // AES-128 OFB 절대값.
+        let key = Vec::from_hex("2b7e151628aed2a6abf7158809cf4f3c").unwrap();
+        let iv = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let pt = Vec::from_hex("6bc1bee22e409f96e93d7e117393172a").unwrap();
+        let mut c = Crypter::new(Cipher::aes_128_ofb(), Mode::Encrypt, &key, Some(&iv)).unwrap();
+        c.pad(false);
+        let mut out = vec![0u8; pt.len() + 16];
+        let n = c.update(&pt, &mut out).unwrap();
+        out.truncate(n);
+        assert_eq!(hex::encode(&out), "3b3fd92eb72dad20333449f8e83cfb4a");
+    }
+
+    // NIST SP 800-38A F.3.13 AES-128 CFB128 2블록 (EVP 경로, 절대값 + 왕복).
+    #[test]
+    fn test_aes_cfb128_kat() {
+        let key = Vec::from_hex("2b7e151628aed2a6abf7158809cf4f3c").unwrap();
+        let iv = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let pt = Vec::from_hex("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51")
+            .unwrap();
+        let ct = Vec::from_hex("3b3fd92eb72dad20333449f8e83cfb4ac8a64537a0b3a93fcde3cdad9f1ce58b")
+            .unwrap();
+        let mut enc =
+            Crypter::new(Cipher::aes_128_cfb128(), Mode::Encrypt, &key, Some(&iv)).unwrap();
+        enc.pad(false);
+        let mut o = vec![0u8; pt.len() + 16];
+        let n = enc.update(&pt, &mut o).unwrap();
+        o.truncate(n);
+        assert_eq!(o, ct, "AES-128 CFB128 encrypt");
+        let mut dec =
+            Crypter::new(Cipher::aes_128_cfb128(), Mode::Decrypt, &key, Some(&iv)).unwrap();
+        dec.pad(false);
+        let mut p = vec![0u8; ct.len() + 16];
+        let n = dec.update(&ct, &mut p).unwrap();
+        p.truncate(n);
+        assert_eq!(p, pt, "AES-128 CFB128 decrypt");
+    }
+
+    // AES-128 CFB8 (EVP 경로): 첫 세그먼트 절대값(0x3b = OFB 키스트림 최상위
+    // 바이트 ^ PT[0]) + 왕복 검증.
+    #[test]
+    fn test_aes_cfb8_first_byte_and_roundtrip() {
+        let key = Vec::from_hex("2b7e151628aed2a6abf7158809cf4f3c").unwrap();
+        let iv = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let pt = Vec::from_hex("6bc1bee22e409f96e93d").unwrap();
+        let mut c = Crypter::new(Cipher::aes_128_cfb8(), Mode::Encrypt, &key, Some(&iv)).unwrap();
+        c.pad(false);
+        let mut o = vec![0u8; pt.len() + 16];
+        let n = c.update(&pt, &mut o).unwrap();
+        o.truncate(n);
+        assert_eq!(o[0], 0x3b, "AES-128 CFB8 first byte");
+        let mut dec = Crypter::new(Cipher::aes_128_cfb8(), Mode::Decrypt, &key, Some(&iv)).unwrap();
+        dec.pad(false);
+        let mut p = vec![0u8; o.len() + 16];
+        let n = dec.update(&o, &mut p).unwrap();
+        p.truncate(n);
+        assert_eq!(p, pt, "AES-128 CFB8 roundtrip");
+    }
+
+    // CFB1 비트 경로: set_flags(LENGTH_BITS)+update_bits 로 왕복 검증(ARIA-128).
+    #[test]
+    fn test_aria_cfb1_bit_roundtrip() {
+        let key = Vec::from_hex("f510fceead9d707d7815c29f0f999d1d").unwrap();
+        let iv = Vec::from_hex("a7dafbdb2381f55e88cfd98bb1807eb1").unwrap();
+        let pt = [0b1011_0010u8]; // 8비트 중 앞 5비트만 사용
+        let nbits = 5usize;
+        let mut enc =
+            Crypter::new(Cipher::aria_128_cfb1(), Mode::Encrypt, &key, Some(&iv)).unwrap();
+        enc.pad(false);
+        enc.set_flags(ffi::EVP_CIPH_FLAG_LENGTH_BITS);
+        let mut ct = vec![0u8; 1];
+        enc.update_bits(&pt, nbits, &mut ct).unwrap();
+        let mut dec =
+            Crypter::new(Cipher::aria_128_cfb1(), Mode::Decrypt, &key, Some(&iv)).unwrap();
+        dec.pad(false);
+        dec.set_flags(ffi::EVP_CIPH_FLAG_LENGTH_BITS);
+        let mut back = vec![0u8; 1];
+        dec.update_bits(&ct, nbits, &mut back).unwrap();
+        // 앞 5비트만 비교.
+        assert_eq!(back[0] >> 3, pt[0] >> 3, "ARIA CFB1 roundtrip (5 bits)");
     }
 }

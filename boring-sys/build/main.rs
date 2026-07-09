@@ -957,7 +957,6 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "kbkdf.h",
         "drbg_kcmvp.h",
         "ctrdrbg.h",
-        "kcmvp_modes.h",
         "eckcdsa.h",
         "kcdsa.h",
         "asn1_mac.h",

@@ -1,14 +1,16 @@
 //! 블록암호 CAVP 생성기 (KAT / MMT / MCT).
 //!
-//! ECB/CBC/CTR 는 korecrypto 의 EVP 모드를, OFB/CFB 는 라이브러리의 KCMVP
-//! 스트림 모드(`korecrypto::blockmode`)를 사용한다. CFB 는 피드백 폭
-//! (1/8/32/64/128 비트)을 지원하며, CFB1 은 비트열('0'/'1') 표기를 사용한다.
-//! MCT 의 내부 블록 연산(E)은 검증기준 의사코드대로 ECB 단일 블록을 쓴다.
+//! 모든 운영모드를 korecrypto 의 EVP 인터페이스로 처리한다(ECB/CBC/CTR/OFB/
+//! CFB1/8/32/64/128). CFB1 은 비트열('0'/'1') 표기이며, EVP 의
+//! `EVP_CIPH_FLAG_LENGTH_BITS`(Crypter::set_flags) + `update_bits` 로 비트
+//! 단위 입력을 처리한다. MCT 의 내부 블록 연산(E)은 검증기준 의사코드대로
+//! ECB 단일 블록을 쓴다.
 
 use crate::parser::{get, records, set, Item};
 use crate::{GenError, GenOutcome};
-use korecrypto::blockmode::{self, BlockCipher};
 use korecrypto::symm::{Cipher, Crypter, Mode};
+
+const EVP_CIPH_FLAG_LENGTH_BITS: i32 = 0x2000;
 
 /// "ARIA-128" + "ECB" → boring Cipher. 미지원 조합은 None.
 fn lookup(algo: &str, mode: &str) -> Option<Cipher> {
@@ -50,14 +52,64 @@ fn lookup(algo: &str, mode: &str) -> Option<Cipher> {
     })
 }
 
-/// 알고리즘명 → KCMVP 블록암호 종류(OFB/CFB 용).
-fn block_cipher(algo: &str) -> Option<BlockCipher> {
-    Some(match algo {
-        "AES-128" | "AES-192" | "AES-256" => BlockCipher::Aes,
-        "ARIA-128" | "ARIA-192" | "ARIA-256" => BlockCipher::Aria,
-        "LEA-128" | "LEA-192" | "LEA-256" => BlockCipher::Lea,
-        "SEED-128" => BlockCipher::Seed,
-        "HIGHT" => BlockCipher::Hight,
+/// OFB / CFB(1/8/32/64/128) 의 EVP Cipher. 미지원 조합은 None.
+fn stream_lookup(algo: &str, mode: &str) -> Option<Cipher> {
+    Some(match (algo, mode) {
+        ("AES-128", "OFB") => Cipher::aes_128_ofb(),
+        ("AES-192", "OFB") => Cipher::aes_192_ofb(),
+        ("AES-256", "OFB") => Cipher::aes_256_ofb(),
+        ("AES-128", "CFB128") => Cipher::aes_128_cfb128(),
+        ("AES-192", "CFB128") => Cipher::aes_192_cfb128(),
+        ("AES-256", "CFB128") => Cipher::aes_256_cfb128(),
+        ("AES-128", "CFB64") => Cipher::aes_128_cfb64(),
+        ("AES-192", "CFB64") => Cipher::aes_192_cfb64(),
+        ("AES-256", "CFB64") => Cipher::aes_256_cfb64(),
+        ("AES-128", "CFB8") => Cipher::aes_128_cfb8(),
+        ("AES-192", "CFB8") => Cipher::aes_192_cfb8(),
+        ("AES-256", "CFB8") => Cipher::aes_256_cfb8(),
+        ("AES-128", "CFB1") => Cipher::aes_128_cfb1(),
+        ("AES-192", "CFB1") => Cipher::aes_192_cfb1(),
+        ("AES-256", "CFB1") => Cipher::aes_256_cfb1(),
+        ("ARIA-128", "OFB") => Cipher::aria_128_ofb(),
+        ("ARIA-192", "OFB") => Cipher::aria_192_ofb(),
+        ("ARIA-256", "OFB") => Cipher::aria_256_ofb(),
+        ("ARIA-128", "CFB128") => Cipher::aria_128_cfb128(),
+        ("ARIA-192", "CFB128") => Cipher::aria_192_cfb128(),
+        ("ARIA-256", "CFB128") => Cipher::aria_256_cfb128(),
+        ("ARIA-128", "CFB64") => Cipher::aria_128_cfb64(),
+        ("ARIA-192", "CFB64") => Cipher::aria_192_cfb64(),
+        ("ARIA-256", "CFB64") => Cipher::aria_256_cfb64(),
+        ("ARIA-128", "CFB8") => Cipher::aria_128_cfb8(),
+        ("ARIA-192", "CFB8") => Cipher::aria_192_cfb8(),
+        ("ARIA-256", "CFB8") => Cipher::aria_256_cfb8(),
+        ("ARIA-128", "CFB1") => Cipher::aria_128_cfb1(),
+        ("ARIA-192", "CFB1") => Cipher::aria_192_cfb1(),
+        ("ARIA-256", "CFB1") => Cipher::aria_256_cfb1(),
+        ("LEA-128", "OFB") => Cipher::lea_128_ofb(),
+        ("LEA-192", "OFB") => Cipher::lea_192_ofb(),
+        ("LEA-256", "OFB") => Cipher::lea_256_ofb(),
+        ("LEA-128", "CFB128") => Cipher::lea_128_cfb128(),
+        ("LEA-192", "CFB128") => Cipher::lea_192_cfb128(),
+        ("LEA-256", "CFB128") => Cipher::lea_256_cfb128(),
+        ("LEA-128", "CFB64") => Cipher::lea_128_cfb64(),
+        ("LEA-192", "CFB64") => Cipher::lea_192_cfb64(),
+        ("LEA-256", "CFB64") => Cipher::lea_256_cfb64(),
+        ("LEA-128", "CFB8") => Cipher::lea_128_cfb8(),
+        ("LEA-192", "CFB8") => Cipher::lea_192_cfb8(),
+        ("LEA-256", "CFB8") => Cipher::lea_256_cfb8(),
+        ("LEA-128", "CFB1") => Cipher::lea_128_cfb1(),
+        ("LEA-192", "CFB1") => Cipher::lea_192_cfb1(),
+        ("LEA-256", "CFB1") => Cipher::lea_256_cfb1(),
+        ("SEED-128", "OFB") => Cipher::seed_ofb(),
+        ("SEED-128", "CFB128") => Cipher::seed_cfb128(),
+        ("SEED-128", "CFB64") => Cipher::seed_cfb64(),
+        ("SEED-128", "CFB8") => Cipher::seed_cfb8(),
+        ("SEED-128", "CFB1") => Cipher::seed_cfb1(),
+        ("HIGHT", "OFB") => Cipher::hight_ofb(),
+        ("HIGHT", "CFB64") => Cipher::hight_cfb64(),
+        ("HIGHT", "CFB32") => Cipher::hight_cfb32(),
+        ("HIGHT", "CFB8") => Cipher::hight_cfb8(),
+        ("HIGHT", "CFB1") => Cipher::hight_cfb1(),
         _ => return None,
     })
 }
@@ -111,28 +163,35 @@ pub fn generate(stem: &str, items: &mut [Item]) -> Result<GenOutcome, GenError> 
         None => return Ok(GenOutcome::Skipped("파일명 파싱 실패".into())),
     };
 
-    // OFB: 라이브러리 KCMVP_ofb_crypt 사용. MCT 는 의사코드대로 ECB 로 처리.
+    // OFB: EVP OFB. MCT 는 검증기준 의사코드대로 ECB 로 처리.
     if mode == "OFB" {
-        let bc = match block_cipher(&algo) {
+        let cipher = match stream_lookup(&algo, &mode) {
             Some(c) => c,
             None => return Ok(GenOutcome::Skipped(format!("미지원 암호: {algo}"))),
         };
         return match testtype.as_str() {
-            "KAT" | "MMT" => ofb_kat_mmt(bc, items),
+            "KAT" | "MMT" => kat_mmt(cipher, items),
             "MCT" => mct(&algo, "OFB", items),
             other => Ok(GenOutcome::Skipped(format!("미지원 시험유형: {other}"))),
         };
     }
 
-    // CFB{1,8,32,64,128}: 라이브러리 KCMVP_cfb_crypt 사용.
+    // CFB{1,8,32,64,128}: EVP CFB. CFB1 은 비트 경로(set_flags+update_bits),
+    // 그 외는 바이트 EVP. MCT 는 ECB 의사코드로 처리(cfb_mct).
     if let Some(width) = mode.strip_prefix("CFB").and_then(|w| w.parse::<u32>().ok()) {
-        let bc = match block_cipher(&algo) {
+        let cipher = match stream_lookup(&algo, &mode) {
             Some(c) => c,
-            None => return Ok(GenOutcome::Skipped(format!("미지원 암호: {algo}"))),
+            None => return Ok(GenOutcome::Skipped(format!("미지원 암호: {algo} {mode}"))),
         };
         return match testtype.as_str() {
-            "KAT" | "MMT" => cfb_kat_mmt(bc, width, items),
-            "MCT" => cfb_mct(&algo, bc, width, items),
+            "KAT" | "MMT" => {
+                if width == 1 {
+                    cfb1_kat_mmt(cipher, items)
+                } else {
+                    kat_mmt(cipher, items)
+                }
+            }
+            "MCT" => cfb_mct(&algo, width, items),
             other => Ok(GenOutcome::Skipped(format!("미지원 시험유형: {other}"))),
         };
     }
@@ -166,31 +225,6 @@ fn direction<'a>(items: &'a [Item], rec: &Vec<usize>) -> Option<(&'static str, &
     } else {
         None
     }
-}
-
-/// OFB KAT/MMT: 라이브러리 OFB(암/복호 동일).
-fn ofb_kat_mmt(bc: BlockCipher, items: &mut [Item]) -> Result<GenOutcome, GenError> {
-    let recs = records(items);
-    let mut filled = 0usize;
-    for rec in &recs {
-        let key = match get(items, rec, "KEY") {
-            Some(k) => hx(k)?,
-            None => continue,
-        };
-        let iv = hx(get(items, rec, "IV").unwrap_or(""))?;
-        let (target, input_str, encrypt) = match direction(items, rec) {
-            Some(d) => d,
-            None => continue,
-        };
-        let input = hx(input_str)?;
-        let out =
-            blockmode::ofb_crypt(bc, &key, &iv, &input).map_err(|e| GenError(e.to_string()))?;
-        let _ = encrypt; // OFB 는 방향 무관
-        if set(items, rec, target, &hex::encode_upper(&out)) {
-            filled += 1;
-        }
-    }
-    Ok(GenOutcome::Generated(filled))
 }
 
 /// CFB 입력 문자열을 (패킹 바이트, 비트수)로 변환한다. CFB1 은 '0'/'1' 비트열.
@@ -228,8 +262,9 @@ fn format_cfb_output(width: u32, bytes: &[u8], total_bits: usize) -> String {
     }
 }
 
-/// CFB KAT/MMT: 라이브러리 CFB(피드백 폭 width 비트).
-fn cfb_kat_mmt(bc: BlockCipher, width: u32, items: &mut [Item]) -> Result<GenOutcome, GenError> {
+/// CFB1 KAT/MMT: EVP CFB1(비트 경로). '0'/'1' 비트열 입출력,
+/// `EVP_CIPH_FLAG_LENGTH_BITS` + `update_bits` 로 정확한 비트수 처리.
+fn cfb1_kat_mmt(cipher: Cipher, items: &mut [Item]) -> Result<GenOutcome, GenError> {
     let recs = records(items);
     let mut filled = 0usize;
     for rec in &recs {
@@ -242,10 +277,20 @@ fn cfb_kat_mmt(bc: BlockCipher, width: u32, items: &mut [Item]) -> Result<GenOut
             Some(d) => d,
             None => continue,
         };
-        let (input, total_bits) = parse_cfb_input(width, input_str)?;
-        let out = blockmode::cfb_crypt(bc, &key, &iv, width, &input, total_bits, encrypt)
+        let (input, total_bits) = parse_cfb_input(1, input_str)?;
+        let mode = if encrypt {
+            Mode::Encrypt
+        } else {
+            Mode::Decrypt
+        };
+        let mut c =
+            Crypter::new(cipher, mode, &key, Some(&iv)).map_err(|e| GenError(e.to_string()))?;
+        c.pad(false);
+        c.set_flags(EVP_CIPH_FLAG_LENGTH_BITS);
+        let mut out = vec![0u8; total_bits.div_ceil(8) + 1];
+        c.update_bits(&input, total_bits, &mut out)
             .map_err(|e| GenError(e.to_string()))?;
-        let out_str = format_cfb_output(width, &out, total_bits);
+        let out_str = format_cfb_output(1, &out, total_bits);
         if set(items, rec, target, &out_str) {
             filled += 1;
         }
@@ -303,12 +348,7 @@ fn bits_to_bytes(bits: &[bool]) -> Vec<u8> {
 /// - 피드백(CF) = 시프트 레지스터(상위 s비트 버리고 CT 세그먼트 추가).
 /// - 외부 갱신: Key ^= (CT 비트열의 끝 keylen 비트), IV[i+1]=끝 b비트,
 ///   PT[0]=CT[999-b/s].
-fn cfb_mct(
-    algo: &str,
-    _bc: BlockCipher,
-    width: u32,
-    items: &mut [Item],
-) -> Result<GenOutcome, GenError> {
+fn cfb_mct(algo: &str, width: u32, items: &mut [Item]) -> Result<GenOutcome, GenError> {
     let ecb = lookup(algo, "ECB").ok_or_else(|| GenError("ECB 미지원".into()))?;
     let s = width as usize;
     let bl = ecb.block_size(); // 바이트
@@ -355,7 +395,7 @@ fn cfb_mct(
             items,
             rec,
             "IV",
-            &hex::encode_upper(&bits_to_bytes(&iv_bits)),
+            &hex::encode_upper(bits_to_bytes(&iv_bits)),
         );
         set(
             items,
