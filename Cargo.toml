@@ -3,7 +3,8 @@ members = [
     "boring",
     "boring-sys",
     "tokio-boring",
-    "hyper-boring"
+    "hyper-boring",
+    "cavp-test"
 ]
 resolver = "2"
 

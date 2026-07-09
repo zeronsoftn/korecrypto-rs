@@ -1,0 +1,13 @@
+[package]
+name = "cavp-test"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "cavp-rsp"
+path = "src/main.rs"
+
+[dependencies]
+korecrypto = { path = "../boring" }
+hex.workspace = true

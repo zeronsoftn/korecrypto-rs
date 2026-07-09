@@ -37,7 +37,7 @@ KCMVP는 국가·공공기관 도입 보안제품에 사용되는 암호모듈�
 
 ### 1.2 GAP 요약 — 신규 구현이 필요한 항목 (진행현황)
 
-1. [x] 블록암호: **ARIA, SEED, LEA, HIGHT** (+ 운영모드 ECB/CBC/CTR/GCM/CCM)
+1. [x] 블록암호: **ARIA, SEED, LEA, HIGHT** (+ 운영모드 ECB/CBC/CTR/GCM/CCM, **OFB/CFB**)
 2. [x] 해시: **LSH** 전체 변형, **SHA-3** EVP 노출
 3. [x] DRBG: **Hash_DRBG, HMAC_DRBG**
 4. [x] 전자서명: **KCDSA, EC-KCDSA** (서명/검증/키생성/PCT)
@@ -85,6 +85,7 @@ BoringSSL의 `BORINGSSL_FIPS` 빌드 경로를 KCMVP 모듈 빌드의 토대로 
 - [x] NID 등록: `include/openssl/nid.h` (ARIA 1065-1079/1124-1126 OpenSSL 호환, LEA 2001-2012, SEED 2101-2104, HIGHT 2105-2107).
 - [~] 이름/NID 룩업(`get_cipher.cc kCiphers[]`)은 등록하지 않음 — `EVP_*` 게터 + Rust `Cipher` 생성자로 직접 노출하므로 문자열 룩업은 불필요(필요 시 후속).
 - [x] 헤더 노출: 신규 `include/openssl/{aria,lea,seed,hight}.h`, AEAD 게터는 `aead.h`.
+- [x] **OFB/CFB 운영모드**: `crypto/fipsmodule/cipher/kcmvp_modes.cc.inc` (+ `include/openssl/kcmvp_modes.h`). EVP 폭별 등록이 비현실적(CFB1/8/32/64/128 × 5암호)이라, CTR_DRBG_new_ex 와 동일하게 **암호 셀렉터(KCMVP_CIPHER_*) 디스패치** 방식으로 단일 함수 제공: `KCMVP_ofb_crypt`, `KCMVP_cfb_crypt`(피드백 폭 비트 인자, 비트 단위 시프트 레지스터). Rust `boring/src/blockmode.rs` (`BlockCipher`, `ofb_crypt`/`cfb_crypt`). 검증: KISA ARIA 기대값 OFB 9/9 + CFB 36/36(KAT/MMT/MCT × 폭/키), AES-OFB 는 EVP 교차검증. MCT 의 내부 E 는 ECB(검증기준 의사코드 그대로).
 - 비고: 별도 `bcm_interface.h` 선언 대신 공개 헤더 + `bcm.cc` include 방식 사용.
 
 ### Phase 2 — 해시함수 (LSH, SHA-3 노출) ✅

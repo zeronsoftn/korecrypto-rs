@@ -91,11 +91,28 @@ impl KcdsaKey {
 
     /// 비트 길이 `p_bits`(|P|), `q_bits`(|Q|)의 도메인 파라미터 (P,Q,G)를
     /// TTAK.KO-12.0001 절차로 생성하여 key 에 설정하고, 생성 증거값을 반환한다.
+    /// PPGF 해시는 |Q| 로 정한다(224→SHA-224, 256→SHA-256).
     /// `p_bits`는 2048..3072(256 배수), `q_bits`는 224 또는 256.
     pub fn generate_parameters(
         &mut self,
         p_bits: usize,
         q_bits: usize,
+    ) -> Result<KcdsaParamEvidence, ErrorStack> {
+        let md = if q_bits == 224 {
+            MessageDigest::sha224()
+        } else {
+            MessageDigest::sha256()
+        };
+        self.generate_parameters_md(p_bits, q_bits, md)
+    }
+
+    /// `generate_parameters` 와 같되 PPGF 해시를 `md` 로 명시한다
+    /// (검증시스템 파일이 |Q| 와 다른 해시를 지정할 수 있다: 예 |Q|=224, SHA-256).
+    pub fn generate_parameters_md(
+        &mut self,
+        p_bits: usize,
+        q_bits: usize,
+        md: MessageDigest,
     ) -> Result<KcdsaParamEvidence, ErrorStack> {
         let mut seed = vec![0u8; q_bits / 8];
         let mut seed_len = 0usize;
@@ -105,8 +122,9 @@ impl KcdsaKey {
         let mut h = vec![0u8; p_bits / 8];
         let mut h_len = 0usize;
         unsafe {
-            if ffi::KCDSA_generate_parameters(
+            if ffi::KCDSA_generate_parameters_md(
                 self.as_ptr(),
+                md.as_ptr(),
                 p_bits as i32,
                 q_bits as i32,
                 seed.as_mut_ptr(),

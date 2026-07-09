@@ -129,6 +129,7 @@ pub mod aead;
 pub mod aes;
 pub mod asn1;
 pub mod base64;
+pub mod blockmode;
 pub mod bn;
 pub mod cmac;
 pub mod conf;
