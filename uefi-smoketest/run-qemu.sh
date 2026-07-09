@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # uefi-smoketest 를 x86_64-unknown-uefi 로 빌드해 실제 .efi 를 만들고, QEMU + OVMF 로
-# 부팅한 뒤 시리얼(`-serial stdio`) 출력에서 FIPS 자가시험 결과를 검증한다.
+# 부팅한 뒤 시리얼(`-serial stdio`) 출력에서 KCMVP 자가시험 결과를 검증한다.
 #
 # 통과 조건: 시리얼에 "RESULT: PASS" 가 나타나면 성공(exit 0), 아니면 실패(exit 1).
 #
@@ -13,8 +13,8 @@
 #   OVMF_CODE / OVMF_VARS (기본 /usr/share/OVMF/OVMF_CODE_4M.fd, OVMF_VARS_4M.fd)
 #   QEMU                  (기본 qemu-system-x86_64)
 #   개발 트리에서 build.rs 의 소스 복사가 느리거나 실패하면 아래를 미리 export:
-#     BORING_BSSL_FIPS_SOURCE_PATH=<...>/boring-sys/deps/boringssl
-#     BORING_BSSL_FIPS_ASSUME_PATCHED=1
+#     KORECRYPTO_KCMVP_SOURCE_PATH=<...>/boring-sys/deps/boringssl
+#     KORECRYPTO_KCMVP_ASSUME_PATCHED=1
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,11 +26,11 @@ cd "$SCRIPT_DIR"
 ## 복사가 실패한다. 로컬 서브모듈이 있으면 복사 없이 제자리 빌드하도록 SOURCE_PATH 를
 ## 자동으로 설정한다.
 #BSSL_SRC="$SCRIPT_DIR/../boring-sys/deps/boringssl/CMakeLists.txt"
-#if [ -z "${BORING_BSSL_FIPS_SOURCE_PATH:-}" ] && [ -f "$BSSL_SRC" ]; then
-#  export BORING_BSSL_FIPS_SOURCE_PATH
-#  BORING_BSSL_FIPS_SOURCE_PATH="$(cd "$SCRIPT_DIR/../boring-sys/deps/boringssl" && pwd)"
-#  export BORING_BSSL_FIPS_ASSUME_PATCHED=1
-#  echo "[*] 로컬 boringssl 서브모듈 사용 (복사 우회): $BORING_BSSL_FIPS_SOURCE_PATH"
+#if [ -z "${KORECRYPTO_KCMVP_SOURCE_PATH:-}" ] && [ -f "$BSSL_SRC" ]; then
+#  export KORECRYPTO_KCMVP_SOURCE_PATH
+#  KORECRYPTO_KCMVP_SOURCE_PATH="$(cd "$SCRIPT_DIR/../boring-sys/deps/boringssl" && pwd)"
+#  export KORECRYPTO_KCMVP_ASSUME_PATCHED=1
+#  echo "[*] 로컬 boringssl 서브모듈 사용 (복사 우회): $KORECRYPTO_KCMVP_SOURCE_PATH"
 #fi
 
 # --- 툴체인 기본값(clang >= 19 필요) ---
@@ -105,7 +105,7 @@ set -e
 
 echo "----------------------------------------"
 if grep -q "RESULT: PASS" "$SERIAL_LOG"; then
-  echo "[OK] FIPS 자가시험 통과 (serial: RESULT: PASS)"
+  echo "[OK] KCMVP 자가시험 통과 (serial: RESULT: PASS)"
   exit 0
 else
   echo "[FAIL] 'RESULT: PASS' 를 시리얼 출력에서 찾지 못함 (qemu rc=$QEMU_RC)"

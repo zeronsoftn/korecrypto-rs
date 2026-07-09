@@ -75,7 +75,7 @@ impl Config {
             features.uefi = true
         }
 
-        let env = Env::from_env(&host, &target, features.is_fips_like());
+        let env = Env::from_env(&host, &target, features.is_kcmvp_like());
 
         let is_bazel = env
             .source_path
@@ -119,8 +119,8 @@ impl Config {
 
         if self.env.assume_patched && is_external_native_lib_source {
             return Err(
-                "`BORING_BSSL_{{,_FIPS}}_ASSUME_PATCHED` env variable is supposed to be used with\
-                `BORING_BSSL{{,_FIPS}}_PATH` or `BORING_BSSL{{,_FIPS}}_SOURCE_PATH` env variables",
+                "`BORING_BSSL{{→KORECRYPTO_FIPS}}_ASSUME_PATCHED` env variable is supposed to be used with\
+                `BORING_BSSL{{→KORECRYPTO_FIPS}}_PATH` or `BORING_BSSL{{→KORECRYPTO_FIPS}}_SOURCE_PATH` env variables",
             );
         }
 
@@ -135,7 +135,7 @@ impl Config {
         }
 
         if self.env.export_to_install_dir.is_some() && is_precompiled_native_lib {
-            return Err("`BORING_BSSL{{,_FIPS_}}INSTALL_DIR` cannot be used together with a precompiled library");
+            return Err("`BORING_BSSL{{→KORECRYPTO_FIPS}}_INSTALL_DIR` cannot be used together with a precompiled library");
         }
         Ok(())
     }
@@ -150,7 +150,7 @@ impl Features {
         Self {
             baremetal: cfg!(feature = "baremetal"),
             uefi: cfg!(feature = "uefi"),
-            fips: cfg!(feature = "fips"),
+            fips: cfg!(feature = "kcmvp"),
             rpk: cfg!(feature = "rpk"),
             underscore_wildcards: cfg!(feature = "underscore-wildcards"),
             allow_crl_extensions_bad_version: cfg!(feature = "allow-crl-extensions-bad-version"),
@@ -158,13 +158,13 @@ impl Features {
         }
     }
 
-    pub(crate) fn is_fips_like(&self) -> bool {
+    pub(crate) fn is_kcmvp_like(&self) -> bool {
         self.fips
     }
 }
 
 impl Env {
-    fn from_env(host: &str, target: &str, is_fips_like: bool) -> Self {
+    fn from_env(host: &str, target: &str, is_kcmvp_like: bool) -> Self {
         let var_prefix = if host == target { "HOST" } else { "TARGET" };
         let target_with_underscores = target.replace('-', "_");
 
@@ -177,18 +177,18 @@ impl Env {
 
         let boringssl_var = |name: &str| {
             const BORING_BSSL_PREFIX: &str = "BORING_BSSL_";
-            const BORING_BSSL_FIPS_PREFIX: &str = "BORING_BSSL_FIPS_";
+            const KORECRYPTO_FIPS_PREFIX: &str = "KORECRYPTO_FIPS_";
 
             // The passed name is the non-fips version of the environment variable,
             // to help look for them in the repository.
             assert!(name.starts_with(BORING_BSSL_PREFIX));
 
             let non_fips = target_var(name);
-            if is_fips_like {
-                let fips_name = name.replace(BORING_BSSL_PREFIX, BORING_BSSL_FIPS_PREFIX);
+            if is_kcmvp_like {
+                let fips_name = name.replace(BORING_BSSL_PREFIX, KORECRYPTO_FIPS_PREFIX);
                 let fips = target_var(&fips_name);
                 if fips.is_none() && non_fips.is_some() {
-                    println!("cargo:warning=env var {name} ignored, because FIPS is enabled. Set {fips_name} instead.");
+                    println!("cargo:warning=env var {name} ignored, because KCMVP is enabled. Set {fips_name} instead.");
                 }
                 fips
             } else {
@@ -197,13 +197,13 @@ impl Env {
         };
 
         Self {
-            path: boringssl_var("BORING_BSSL_PATH").map(PathBuf::from), // gets BORING_BSSL_FIPS_PATH if fips is enabled
-            include_path: boringssl_var("BORING_BSSL_INCLUDE_PATH").map(PathBuf::from), // gets BORING_BSSL_FIPS_INCLUDE_PATH if fips is enabled
-            source_path: boringssl_var("BORING_BSSL_SOURCE_PATH").map(PathBuf::from), // gets BORING_BSSL_FIPS_SOURCE_PATH if fips is enabled
-            assume_patched: boringssl_var("BORING_BSSL_ASSUME_PATCHED") // gets BORING_BSSL_FIPS_ASSUME_PATCHED if fips is enabled
+            path: boringssl_var("BORING_BSSL_PATH").map(PathBuf::from), // gets KORECRYPTO_FIPS_PATH if kcmvp is enabled
+            include_path: boringssl_var("BORING_BSSL_INCLUDE_PATH").map(PathBuf::from), // gets KORECRYPTO_FIPS_INCLUDE_PATH if kcmvp is enabled
+            source_path: boringssl_var("BORING_BSSL_SOURCE_PATH").map(PathBuf::from), // gets KORECRYPTO_FIPS_SOURCE_PATH if kcmvp is enabled
+            assume_patched: boringssl_var("BORING_BSSL_ASSUME_PATCHED") // gets KORECRYPTO_FIPS_ASSUME_PATCHED if kcmvp is enabled
                 .is_some_and(|v| !v.is_empty()),
-            sysroot: boringssl_var("BORING_BSSL_SYSROOT").map(PathBuf::from), // gets BORING_BSSL_FIPS_SYSROOT if fips is enabled
-            compiler_external_toolchain: boringssl_var("BORING_BSSL_COMPILER_EXTERNAL_TOOLCHAIN") // gets BORING_BSSL_FIPS_COMPILER_EXTERNAL_TOOLCHAIN if fips is enabled
+            sysroot: boringssl_var("BORING_BSSL_SYSROOT").map(PathBuf::from), // gets KORECRYPTO_FIPS_SYSROOT if kcmvp is enabled
+            compiler_external_toolchain: boringssl_var("BORING_BSSL_COMPILER_EXTERNAL_TOOLCHAIN") // gets KORECRYPTO_FIPS_COMPILER_EXTERNAL_TOOLCHAIN if kcmvp is enabled
                 .map(PathBuf::from),
             debug: target_var("DEBUG"),
             opt_level: target_var("OPT_LEVEL"),

@@ -263,7 +263,7 @@ jobs:
           os: ubuntu-latest
           check_only: true
           uefi: true
-          features: uefi,fips
+          features: uefi,kcmvp
     env:
       CARGO_HOME: ${{ github.workspace }}/.cache/cargo
       CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/.cache/build-dir
@@ -417,7 +417,7 @@ jobs:
       with:
         go-version: '>=1.22.0'
     - name: Run tests
-      run: cargo test --features fips
+      run: cargo test --features kcmvp
     - name: Test korecrypto-sys cargo publish (FIPS)
       # Running `cargo publish --dry-run` tests two things:
       #
@@ -429,7 +429,7 @@ jobs:
       #
       # Both of these may no longer be the case after updating the BoringSSL
       # submodules to a new revision, so it's important to test this on CI.
-      run: cargo publish --dry-run -p korecrypto-sys --features fips
+      run: cargo publish --dry-run -p korecrypto-sys --features kcmvp
 
   # FIPS 가동 전 자가시험(무결성 검사 + KAT)과 승인 알고리즘을 실제로 "실행"해 검증하는
   # 전용 job. 테스트 바이너리(`boring-sys/tests/fips_selftest.rs`, test_fips.cc 의 Rust
@@ -505,7 +505,7 @@ jobs:
         shell: bash
         # FIPS 는 clang 을 강제한다. 크로스 링크·무결성 해시 일관성은 boring-sys/cmake/
         # <arch>-linux.cmake 가 clang 에 GNU 크로스 ld 를 지정해 처리한다.
-        # BORING_BSSL_FIPS_SYSROOT 는 설정하지 않는다(--sysroot 가 GNU 링커스크립트의
+        # KORECRYPTO_FIPS_SYSROOT 는 설정하지 않는다(--sysroot 가 GNU 링커스크립트의
         # 절대경로 해석을 sysroot 기준으로 이중화해 링크를 깨뜨림).
         run: |
           T=$(echo '${{ matrix.target }}' | tr '[:lower:]-' '[:upper:]_')
@@ -515,7 +515,7 @@ jobs:
         shell: bash
         # boring-sys/tests/fips_selftest.rs = test_fips.cc 의 Rust 포팅. 로드 시
         # 무결성/KAT 자가시험 + 승인 알고리즘 실행을 검증한다.
-        run: cargo test -p korecrypto-sys --features fips --target ${{ matrix.target }} --test fips_selftest -- --nocapture
+        run: cargo test -p korecrypto-sys --features kcmvp --target ${{ matrix.target }} --test fips_selftest -- --nocapture
         env:
           RUSTFLAGS: -Dwarnings ${{ matrix.rustflags }}
 

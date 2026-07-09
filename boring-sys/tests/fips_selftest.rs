@@ -11,7 +11,7 @@
 // korecrypto_sys(FFI)를 그대로 호출해 test_fips.cc 의 run_test() 를 전사한다.
 // (TLS 1.3 KDF 만 예외: CRYPTO_tls13_hkdf_expand_label 는 공개 헤더에 없어 제외.
 //  TLS 1.0/1.2 는 공개 CRYPTO_tls1_prf 로 수행한다.)
-#![cfg(feature = "fips")]
+#![cfg(feature = "kcmvp")]
 
 use korecrypto_sys as ffi;
 use std::mem::MaybeUninit;
@@ -34,13 +34,13 @@ fn test_fips_run_test() {
 unsafe fn run_test() {
     // 0) FIPS 모드 + 모듈 정보. (여기 도달했다는 것은 로드 시 무결성/KAT 자가시험을
     //    이미 통과했다는 뜻이다.)
-    assert_eq!(ffi::FIPS_mode(), 1, "module not in FIPS mode");
+    assert_eq!(ffi::KCMVP_mode(), 1, "module not in KCMVP mode");
     // FIPS_version 은 released(검증된) 모듈에만 주입된다. 소스 빌드/CI 에서는 0 일 수
     // 있으므로(모듈은 여전히 FIPS 모드) 실패시키지 않고 로그만 남긴다.
-    let version = ffi::FIPS_version();
-    let name = ffi::FIPS_module_name();
+    let version = ffi::KCMVP_version();
+    let name = ffi::KCMVP_module_name();
     assert!(!name.is_null(), "FIPS_module_name returned null");
-    let hash = ffi::FIPS_module_hash();
+    let hash = ffi::KCMVP_module_hash();
     assert!(!hash.is_null(), "FIPS_module_hash returned null");
     eprintln!(
         "Module: {:?}, version: {}",

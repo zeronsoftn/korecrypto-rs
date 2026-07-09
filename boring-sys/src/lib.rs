@@ -32,8 +32,8 @@ mod generated {
 // explicitly require presence of some symbols to check if the bindings worked
 pub use generated::{ssl_compliance_policy_t, ERR_add_error_data, SSL_set1_groups}; // if these are missing, your include path is incorrect or has a wrong version of boringssl
 pub use generated::{BIO_new, OPENSSL_free, SSL_ERROR_NONE}; // if these are missing, your include path is incorrect
-#[cfg(feature = "fips")]
-pub use generated::{FIPS_mode, SSL_CTX_set_compliance_policy}; // your include path is incorrect or has a version of boringssl without FIPS support
+#[cfg(feature = "kcmvp")]
+pub use generated::{KCMVP_mode, SSL_CTX_set_compliance_policy}; // your include path is incorrect or has a version of boringssl without FIPS support
 #[cfg(feature = "mlkem")]
 pub use generated::{MLKEM768_encap, MLKEM768_private_key_from_seed}; // your include path is incorrect or has a version of boringssl without mlkem support
 #[cfg(feature = "rpk")]

@@ -21,20 +21,22 @@
 //! ## Environment variables
 //!
 //! This crate uses various environment variables to tweak how boring is built. The variables
-//! are all prefixed by `BORING_BSSL_` for non-FIPS builds, and by `BORING_BSSL_FIPS_` for FIPS builds.
+//! are all prefixed by `BORING_BSSL_` for non-KCMVP builds, and by `KORECRYPTO_FIPS_` for KCMVP builds.
+//! Below, `BORING_BSSL{→KORECRYPTO_FIPS}_X` denotes `BORING_BSSL_X` normally, or `KORECRYPTO_FIPS_X`
+//! when the `kcmvp` feature is enabled.
 //!
 //! ## Support for pre-built binaries or custom source
 //!
 //! While this crate can build BoringSSL on its own, you may want to provide pre-built binaries instead.
-//! To do so, specify the environment variable `BORING_BSSL{,_FIPS}_PATH` with the path to the binaries.
+//! To do so, specify the environment variable `BORING_BSSL{→KORECRYPTO_FIPS}_PATH` with the path to the binaries.
 //!
-//! You can also provide specific headers by setting `BORING_BSSL{,_FIPS}_INCLUDE_PATH`.
+//! You can also provide specific headers by setting `BORING_BSSL{→KORECRYPTO_FIPS}_INCLUDE_PATH`.
 //!
-//! _Notes_: The crate will look for headers in the`$BORING_BSSL{,_FIPS}_INCLUDE_PATH/openssl/`
+//! _Notes_: The crate will look for headers in the`$BORING_BSSL{→KORECRYPTO_FIPS}_INCLUDE_PATH/openssl/`
 //! folder, make sure to place your headers there.
 //!
 //! In alternative a different path for the BoringSSL source code directory can be specified by setting
-//! `BORING_BSSL{,_FIPS}_SOURCE_PATH` which will automatically be compiled during the build process.
+//! `BORING_BSSL{→KORECRYPTO_FIPS}_SOURCE_PATH` which will automatically be compiled during the build process.
 //!
 //! _Warning_: When providing a different version of BoringSSL make sure to use a compatible one, the
 //! crate relies on the presence of certain functions.
@@ -43,19 +45,19 @@
 //!
 //! Only BoringCrypto module version `853ca1ea1168dff08011e5d42d94609cc0ca2e27`, as certified with
 //! [FIPS 140-2 certificate 4407](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4407)
-//! is supported by this crate. Support is enabled by this crate's `fips` feature.
+//! is supported by this crate. Support is enabled by this crate's `kcmvp` feature.
 //!
 //! `boring-sys` comes with a test that FIPS is enabled/disabled depending on the feature flag. You can run it as follows:
 //!
 //! ```bash
-//! $ cargo test --features fips fips::is_enabled
+//! $ cargo test --features kcmvp kcmvp::is_enabled
 //! ```
 //!
 //! ## Linking current BoringSSL version with precompiled FIPS-validated module (`bcm.o`)
 //!
 //! It's possible to link latest supported version of BoringSSL with FIPS-validated crypto module
 //! (`bcm.o`). To enable this compilation option one should enable `fips-link-precompiled`
-//! compilation feature and provide a `BORING_BSSL_FIPS_PRECOMPILED_BCM_O` env variable with a path to the
+//! compilation feature and provide a `KORECRYPTO_FIPS_PRECOMPILED_BCM_O` env variable with a path to the
 //! precompiled FIPS-validated `bcm.o` module.
 //!
 //! Note that `BORING_BSSL_PRECOMPILED_BCM_O` is never used, as linking BoringSSL with precompiled non-FIPS
@@ -141,11 +143,11 @@ pub mod ecdsa;
 pub mod eckcdsa;
 pub mod error;
 pub mod ex_data;
-pub mod fips;
 pub mod hash;
 pub mod hmac;
 pub mod hpke;
 pub mod kcdsa;
+pub mod kcmvp;
 pub mod kdf;
 pub mod memcmp;
 #[cfg(feature = "mlkem")]

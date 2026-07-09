@@ -20,7 +20,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = ["korecrypto/default"]
 
 # Use a FIPS-validated version of boringssl.
-fips = ["korecrypto/fips", "korecrypto-sys/fips"]
+kcmvp = ["korecrypto/kcmvp", "korecrypto-sys/kcmvp"]
 
 # Enables Raw public key API (https://datatracker.ietf.org/doc/html/rfc7250)
 rpk = ["korecrypto/rpk"]

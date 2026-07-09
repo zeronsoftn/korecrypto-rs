@@ -233,9 +233,9 @@ fn main() -> Status {
     report_and_enable_xmm();
 
     unsafe {
-        log::info!("=== korecrypto UEFI FIPS smoketest ===");
+        log::info!("=== korecrypto UEFI KCMVP smoketest ===");
 
-        // FIPS 엔트로피: UEFI 에서 BoringSSL 의 CRYPTO_sysrand 는 EFI_RNG_PROTOCOL 을
+        // KCMVP 엔트로피: UEFI 에서 BoringSSL 의 CRYPTO_sysrand 는 EFI_RNG_PROTOCOL 을
         // 통해 난수를 얻으며, 그러려면 Boot Services 포인터를 CRYPTO_uefi_init 으로
         // 먼저 전달해야 한다. 호출하지 않으면 첫 RNG 사용 시 abort 한다(RSA 자가시험 등).
         let bs = uefi::table::system_table_raw()
@@ -247,9 +247,9 @@ fn main() -> Status {
 
         korecrypto_sys::CRYPTO_library_init();
 
-        // FIPS 자가시험 3종 실행(각 1=성공).
-        let fips_mode = korecrypto_sys::FIPS_mode();
-        log::info!("FIPS_mode={fips_mode}");
+        // KCMVP 자가시험 3종 실행(각 1=성공).
+        let kcmvp_mode = korecrypto_sys::KCMVP_mode();
+        log::info!("KCMVP_mode={kcmvp_mode}");
 
         let integrity = korecrypto_sys::BORINGSSL_integrity_test();
         log::info!("BORINGSSL_integrity_test={integrity}");
@@ -258,7 +258,7 @@ fn main() -> Status {
 
         log::info!("BORINGSSL_self_test_all={self_test}");
 
-        let ok = fips_mode == 1 && integrity == 1 && self_test == 1;
+        let ok = kcmvp_mode == 1 && integrity == 1 && self_test == 1;
 
         // run-qemu.sh 가 grep 하는 결과 표지.
         log::info!("RESULT: {}", if ok { "PASS" } else { "FAIL" });

@@ -37,8 +37,8 @@ cargo build --target x86_64-unknown-uefi
 복사 없이 제자리에서 빌드하도록 source-path 를 지정한다(FIPS 변수):
 
 ```sh
-export BORING_BSSL_FIPS_SOURCE_PATH=/absolute/path/to/boring-sys/deps/boringssl
-export BORING_BSSL_FIPS_ASSUME_PATCHED=1     # CMake 는 OUT_DIR 에 out-of-source 빌드
+export KORECRYPTO_FIPS_SOURCE_PATH=/absolute/path/to/boring-sys/deps/boringssl
+export KORECRYPTO_FIPS_ASSUME_PATCHED=1     # CMake 는 OUT_DIR 에 out-of-source 빌드
 ```
 
 > 깨끗한 체크아웃(수동 산출물 없음)에서는 위 source-path 없이도 빌드된다.

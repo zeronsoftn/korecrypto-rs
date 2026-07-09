@@ -19,7 +19,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = ["korecrypto/default", "tokio-korecrypto/default"]
 
 # Use a FIPS-validated version of boringssl.
-fips = ["korecrypto/fips", "tokio-korecrypto/fips"]
+kcmvp = ["korecrypto/kcmvp", "tokio-korecrypto/kcmvp"]
 
 [dependencies]
 antidote = { workspace = true }

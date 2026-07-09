@@ -56,7 +56,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 # See
 # https://boringssl.googlesource.com/boringssl/+/master/crypto/fipsmodule/FIPS.md
 # for instructions and more details on the boringssl FIPS flag.
-fips = []
+kcmvp = []
 
 # Enables Raw public key API (https://datatracker.ietf.org/doc/html/rfc7250)
 rpk = []

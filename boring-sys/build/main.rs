@@ -818,7 +818,7 @@ fn emit_link_directives(config: &Config) {
     let msvc_lib_subdir = msvc_lib_subdir(config);
 
     let subdirs =
-        if config.is_bazel || (config.features.is_fips_like() && config.env.path.is_some()) {
+        if config.is_bazel || (config.features.is_kcmvp_like() && config.env.path.is_some()) {
             &["lib"][..]
         } else {
             &["lib", "crypto", "ssl", ""][..]
