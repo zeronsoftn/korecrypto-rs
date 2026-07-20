@@ -4,7 +4,8 @@ members = [
     "boring-sys",
     "tokio-boring",
     "hyper-boring",
-    "cavp-test"
+    "cavp-test",
+    "entropy-assess"
 ]
 resolver = "2"
 

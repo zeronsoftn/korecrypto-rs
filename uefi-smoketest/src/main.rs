@@ -247,22 +247,76 @@ fn main() -> Status {
 
         korecrypto_sys::CRYPTO_library_init();
 
-        // KCMVP 자가시험 3종 실행(각 1=성공).
-        let kcmvp_mode = korecrypto_sys::KCMVP_mode();
-        log::info!("KCMVP_mode={kcmvp_mode}");
+        #[cfg(feature = "entropy-dump")]
+        {
+            entropy_dump();
+            poweroff();
+        }
 
-        let integrity = korecrypto_sys::BORINGSSL_integrity_test();
-        log::info!("BORINGSSL_integrity_test={integrity}");
+        #[cfg(not(feature = "entropy-dump"))]
+        {
+            // KCMVP 자가시험 3종 실행(각 1=성공).
+            let kcmvp_mode = korecrypto_sys::KCMVP_mode();
+            log::info!("KCMVP_mode={kcmvp_mode}");
 
-        let self_test = korecrypto_sys::BORINGSSL_self_test_all();
+            let integrity = korecrypto_sys::BORINGSSL_integrity_test();
+            log::info!("BORINGSSL_integrity_test={integrity}");
 
-        log::info!("BORINGSSL_self_test_all={self_test}");
+            let self_test = korecrypto_sys::BORINGSSL_self_test_all();
 
-        let ok = kcmvp_mode == 1 && integrity == 1 && self_test == 1;
+            log::info!("BORINGSSL_self_test_all={self_test}");
 
-        // run-qemu.sh 가 grep 하는 결과 표지.
-        log::info!("RESULT: {}", if ok { "PASS" } else { "FAIL" });
+            let ok = kcmvp_mode == 1 && integrity == 1 && self_test == 1;
 
-        poweroff();
+            // run-qemu.sh 가 grep 하는 결과 표지.
+            log::info!("RESULT: {}", if ok { "PASS" } else { "FAIL" });
+
+            poweroff();
+        }
     }
+}
+
+// KCMVP 잡음원 샘플을 수집해 시리얼로 hex 덤프한다. 실제 KCMVP 모듈 경로
+// (KCMVP_entropy_raw_noise_samples → bssl::entropy::GetSamples)로 수집하며,
+// 호스트 스크립트(run-entropy.sh)가 마커 사이의 hex 를 캡처해 평가 파일로 만든다.
+//
+// 출력 형식(시리얼):
+//   ENTROPY_BEGIN num=<N> bits=<B>
+//   EDATA <hex chunk>
+//   ... (여러 줄) ...
+//   ENTROPY_END ok=<0|1>
+#[cfg(feature = "entropy-dump")]
+unsafe fn entropy_dump() {
+    use alloc::vec;
+
+    // KCMVP 엔트로피 평가가 요구하는 고정 샘플 개수.
+    const NUM_SAMPLES: usize = 250_000;
+    // 한 줄에 담을 샘플(바이트) 수. 시리얼 로그 줄 수를 줄이려 넉넉히 잡는다.
+    const PER_LINE: usize = 256;
+
+    let bits = korecrypto_sys::KCMVP_entropy_noise_sample_bits();
+    log::info!("ENTROPY_BEGIN num={NUM_SAMPLES} bits={bits}");
+
+    let mut samples = vec![0u8; NUM_SAMPLES];
+    let ok = korecrypto_sys::KCMVP_entropy_raw_noise_samples(samples.as_mut_ptr(), samples.len());
+
+    if ok == 1 {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        let mut line = [0u8; PER_LINE * 2];
+        let mut i = 0;
+        while i < samples.len() {
+            let n = core::cmp::min(PER_LINE, samples.len() - i);
+            for j in 0..n {
+                let b = samples[i + j];
+                line[j * 2] = HEX[(b >> 4) as usize];
+                line[j * 2 + 1] = HEX[(b & 0x0f) as usize];
+            }
+            // SAFETY: line[..n*2] 는 ASCII hex 만 담는다.
+            let s = core::str::from_utf8_unchecked(&line[..n * 2]);
+            log::info!("EDATA {s}");
+            i += n;
+        }
+    }
+
+    log::info!("ENTROPY_END ok={ok}");
 }

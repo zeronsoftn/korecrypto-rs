@@ -1,0 +1,21 @@
+[package]
+name = "entropy-assess"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "KCMVP 엔트로피 평가용 잡음원 샘플 파일 생성기 (SP 800-90B)"
+
+[[bin]]
+name = "entropy-assess"
+path = "src/main.rs"
+
+[dependencies]
+# std-libc 는 호스트(Linux/Windows) 바이너리에 필요. kcmvp 는 켜지 않아 워크스페이스
+# 전체 빌드가 FIPS 빌드를 강제하지 않게 두고, 실제 평가 파일 생성은
+# `--features kcmvp` 로 수행한다.
+korecrypto = { path = "../boring", default-features = false, features = ["std-libc"] }
+
+[features]
+default = []
+# 실제 KCMVP(FIPS) 모듈 경로로 잡음원을 수집하려면 이 기능을 켠다.
+kcmvp = ["korecrypto/kcmvp"]

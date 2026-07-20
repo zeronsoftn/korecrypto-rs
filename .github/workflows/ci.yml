@@ -647,3 +647,99 @@ jobs:
       name: Run `rpk,underscore-wildcards` tests
     - run: cargo test --features rpk,underscore-wildcards,mlkem
       name: Run `rpk,underscore-wildcards` tests
+
+  # KCMVP 엔트로피 평가(SP 800-90B)용 잡음원 샘플 파일을 OS 별로 생성해 artifact 로
+  # 올린다. 수집은 반드시 실제 KCMVP 모듈 경로(KCMVP_entropy_raw_noise_samples →
+  # bssl::entropy::GetSamples)로 이뤄진다. Linux/Windows 는 네이티브 바이너리로,
+  # UEFI 는 QEMU 게스트 안에서 수집해 시리얼로 덤프한 뒤 호스트에서 포맷한다.
+  entropy-assess:
+    name: Entropy assessment (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rust: stable
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust: stable-x86_64-msvc
+    env:
+      RUSTC_BOOTSTRAP: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (rustup)
+        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }} && rustup target add ${{ matrix.target }}
+        shell: bash
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM and Clang (Windows)
+        # FIPS(COFF delocate)는 Windows 에서도 clang 을 강제한다(test-fips-selftest 참고).
+        if: startsWith(matrix.os, 'windows')
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1"
+          directory: ${{ runner.temp }}/llvm
+      - name: Set LIBCLANG_PATH (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
+      - name: Generate entropy assessment file
+        shell: bash
+        # 실제 KCMVP 모듈 경로로 25만 개 잡음원 샘플을 수집해 평가 파일을 만든다.
+        run: cargo run -p entropy-assess --features kcmvp --target ${{ matrix.target }} -- collect --label ${{ matrix.name }} entropy-${{ matrix.name }}.txt
+      - name: Upload entropy assessment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: entropy-${{ matrix.name }}
+          path: entropy-${{ matrix.name }}.txt
+          if-no-files-found: error
+
+  entropy-assess-uefi:
+    name: Entropy assessment (uefi-${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-unknown-uefi
+            qemu_pkg: qemu-system-x86
+            fw_pkg: ovmf
+          - arch: aarch64
+            target: aarch64-unknown-uefi
+            qemu_pkg: qemu-system-arm
+            fw_pkg: qemu-efi-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (stable) + UEFI target
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM 22
+        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+      - name: Install QEMU, UEFI firmware, xxd
+        run: sudo apt-get install -y ${{ matrix.qemu_pkg }} ${{ matrix.fw_pkg }} xxd
+      - name: Enable KVM (x86_64)
+        run: |
+          [ ! -e /dev/kvm ] || sudo chmod 0666 /dev/kvm
+      - name: Generate entropy assessment file (UEFI/QEMU)
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: ./uefi-smoketest/run-entropy.sh entropy-uefi-${{ matrix.arch }}.txt
+      - name: Upload entropy assessment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: entropy-uefi-${{ matrix.arch }}
+          path: entropy-uefi-${{ matrix.arch }}.txt
+          if-no-files-found: error

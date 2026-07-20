@@ -783,6 +783,26 @@ fn main() -> ExitCode {
     }
 }
 
+/// `dir` 하위의 C/C++ 소스·헤더 파일을 재귀적으로 찾아 rerun-if-changed 로 등록한다.
+/// 감시 대상은 빌드 입력(.h/.hpp/.c/.cc/.cpp/.inc)만. 존재하지 않는 경로는 조용히
+/// 무시한다(예: source_path 구성 차이).
+fn emit_rerun_if_changed_recursive(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            emit_rerun_if_changed_recursive(&path);
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if matches!(ext, "h" | "hpp" | "c" | "cc" | "cpp" | "inc") {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+    }
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
 
@@ -801,6 +821,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         "cargo:rerun-if-changed={}",
         watch_src.join("CMakeLists.txt").display()
     );
+    // CMakeLists.txt 뿐 아니라 실제 빌드 입력인 C/C++ 소스와 공개 헤더도 감시한다.
+    // 이렇게 하지 않으면 crypto/*.cc(.inc) 나 include/openssl/*.h 를 고쳐도 build.rs 가
+    // 재실행되지 않아 OUT_DIR 복사본·libcrypto.a·bindgen 산출물이 stale 로 남는다
+    // (예: crypto.h 에 함수를 추가해도 ffi 바인딩이 생성되지 않음). watch_src 는 복사
+    // 이전의 원본이라 build.rs 가 수정하지 않으므로 감시해도 무한 재빌드가 없다.
+    for sub in ["include", "crypto"] {
+        emit_rerun_if_changed_recursive(&watch_src.join(sub));
+    }
     ensure_patches_applied(&config)?;
     if !config.env.docs_rs {
         emit_link_directives(&config);
