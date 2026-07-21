@@ -242,10 +242,10 @@ fn main() -> Status {
             .expect("UEFI system table unavailable")
             .as_ref()
             .boot_services;
-        korecrypto_sys::CRYPTO_uefi_init(bs.cast());
+        korecrypto::sys::CRYPTO_uefi_init(bs.cast());
         log::info!("CRYPTO_uefi_init(boot_services={bs:p}) done");
 
-        korecrypto_sys::CRYPTO_library_init();
+        korecrypto::sys::CRYPTO_library_init();
 
         #[cfg(feature = "entropy-dump")]
         {
@@ -256,13 +256,13 @@ fn main() -> Status {
         #[cfg(not(feature = "entropy-dump"))]
         {
             // KCMVP 자가시험 3종 실행(각 1=성공).
-            let kcmvp_mode = korecrypto_sys::KCMVP_mode();
+            let kcmvp_mode = korecrypto::sys::KCMVP_mode();
             log::info!("KCMVP_mode={kcmvp_mode}");
 
-            let integrity = korecrypto_sys::BORINGSSL_integrity_test();
+            let integrity = korecrypto::sys::BORINGSSL_integrity_test();
             log::info!("BORINGSSL_integrity_test={integrity}");
 
-            let self_test = korecrypto_sys::BORINGSSL_self_test_all();
+            let self_test = korecrypto::sys::BORINGSSL_self_test_all();
 
             log::info!("BORINGSSL_self_test_all={self_test}");
 
@@ -294,11 +294,11 @@ unsafe fn entropy_dump() {
     // 한 줄에 담을 샘플(바이트) 수. 시리얼 로그 줄 수를 줄이려 넉넉히 잡는다.
     const PER_LINE: usize = 256;
 
-    let bits = korecrypto_sys::KCMVP_entropy_noise_sample_bits();
+    let bits = korecrypto::sys::KCMVP_entropy_noise_sample_bits();
     log::info!("ENTROPY_BEGIN num={NUM_SAMPLES} bits={bits}");
 
     let mut samples = vec![0u8; NUM_SAMPLES];
-    let ok = korecrypto_sys::KCMVP_entropy_raw_noise_samples(samples.as_mut_ptr(), samples.len());
+    let ok = korecrypto::sys::KCMVP_entropy_raw_noise_samples(samples.as_mut_ptr(), samples.len());
 
     if ok == 1 {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";

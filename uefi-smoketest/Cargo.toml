@@ -20,8 +20,9 @@ entropy-dump = []
 [dependencies]
 # UEFI 런타임: 전역 할당자 + panic 핸들러를 제공한다.
 uefi = { version = "0.37", features = ["alloc", "global_allocator", "panic_handler", "logger"] }
-# 검증 대상: FIPS + picolibc(freestanding libc) 로 빌드된 BoringSSL FFI.
-korecrypto-sys = { path = "../boring-sys", default-features = false, features = ["kcmvp", "picolibc", "uefi"] }
+# 검증 대상: 고수준 korecrypto(boring) 크레이트를 UEFI(no_std)에서 사용.
+# (korecrypto 는 korecrypto-sys 를 재-export 하므로 raw FFI 도 korecrypto::sys 로 접근.)
+korecrypto = { path = "../boring", default-features = false, features = ["kcmvp", "uefi"] }
 log = { version = "0.4.33", default-features = false }
 # picolibc 를 직접 참조해 링크에 끌어들이고, malloc/free/... 를 Rust 전역
 # 할당자(uefi 의 global_allocator)에 위임하도록 malloc feature 를 켠다.
