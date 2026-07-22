@@ -468,6 +468,14 @@ jobs:
             target: x86_64-pc-windows-msvc
             rust: stable-x86_64-msvc
             rustflags: "-C target-feature=+crt-static"
+          # 릴리스 최적화된 bcm 어셈블리는 디버그에 없는 코드젠(rex64 tailcall,
+          # cmpq/.refptr 경계검사)을 만들어 delocate COFF 경로를 다르게 태운다.
+          # MSVC 릴리스 회귀를 잡기 위해 --release 로도 자가시험을 돌린다.
+          - name: x86_64-msvc-release
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust: stable-x86_64-msvc
+            release: true
     env:
       RUSTC_BOOTSTRAP: 1
     steps:
@@ -515,7 +523,7 @@ jobs:
         shell: bash
         # boring-sys/tests/fips_selftest.rs = test_fips.cc 의 Rust 포팅. 로드 시
         # 무결성/KAT 자가시험 + 승인 알고리즘 실행을 검증한다.
-        run: cargo test -p korecrypto-sys --features kcmvp --target ${{ matrix.target }} --test fips_selftest -- --nocapture
+        run: cargo test -p korecrypto-sys --features kcmvp --target ${{ matrix.target }} ${{ matrix.release && '--release' || '' }} --test fips_selftest -- --nocapture
         env:
           RUSTFLAGS: -Dwarnings ${{ matrix.rustflags }}
 
