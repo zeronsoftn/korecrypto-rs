@@ -541,6 +541,13 @@ fn get_extra_clang_args_for_bindgen(config: &Config) -> Vec<String> {
                     params.push(inc);
                 }
                 params.push(format!("--target={}", config.clang_target()));
+            } else if config.target_os == "windows" && config.target_env == "msvc" {
+                // libclang 은 자신이 빌드된 기본 타깃으로 헤더를 파싱한다. msys2
+                // CLANG64 셸처럼 PATH 상의 libclang 이 *-windows-gnu 기본 타깃을
+                // 가지면 MSVC UCRT 가 아니라 C:/msys64/clang64/include 의 GNU
+                // stdlib.h 를 물고, BoringSSL 공개 헤더 파싱이 `expected ';'`
+                // 류의 에러로 실패한다. MSVC ABI 타깃을 명시한다.
+                params.push(format!("--target={}", config.clang_target()));
             }
         }
     }
