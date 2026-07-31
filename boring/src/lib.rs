@@ -21,20 +21,22 @@
 //! ## Environment variables
 //!
 //! This crate uses various environment variables to tweak how boring is built. The variables
-//! are all prefixed by `BORING_BSSL_` for non-FIPS builds, and by `BORING_BSSL_FIPS_` for FIPS builds.
+//! are all prefixed by `BORING_BSSL_` for non-KCMVP builds, and by `KORECRYPTO_FIPS_` for KCMVP builds.
+//! Below, `BORING_BSSL{→KORECRYPTO_FIPS}_X` denotes `BORING_BSSL_X` normally, or `KORECRYPTO_FIPS_X`
+//! when the `kcmvp` feature is enabled.
 //!
 //! ## Support for pre-built binaries or custom source
 //!
 //! While this crate can build BoringSSL on its own, you may want to provide pre-built binaries instead.
-//! To do so, specify the environment variable `BORING_BSSL{,_FIPS}_PATH` with the path to the binaries.
+//! To do so, specify the environment variable `BORING_BSSL{→KORECRYPTO_FIPS}_PATH` with the path to the binaries.
 //!
-//! You can also provide specific headers by setting `BORING_BSSL{,_FIPS}_INCLUDE_PATH`.
+//! You can also provide specific headers by setting `BORING_BSSL{→KORECRYPTO_FIPS}_INCLUDE_PATH`.
 //!
-//! _Notes_: The crate will look for headers in the`$BORING_BSSL{,_FIPS}_INCLUDE_PATH/openssl/`
+//! _Notes_: The crate will look for headers in the`$BORING_BSSL{→KORECRYPTO_FIPS}_INCLUDE_PATH/openssl/`
 //! folder, make sure to place your headers there.
 //!
 //! In alternative a different path for the BoringSSL source code directory can be specified by setting
-//! `BORING_BSSL{,_FIPS}_SOURCE_PATH` which will automatically be compiled during the build process.
+//! `BORING_BSSL{→KORECRYPTO_FIPS}_SOURCE_PATH` which will automatically be compiled during the build process.
 //!
 //! _Warning_: When providing a different version of BoringSSL make sure to use a compatible one, the
 //! crate relies on the presence of certain functions.
@@ -43,19 +45,19 @@
 //!
 //! Only BoringCrypto module version `853ca1ea1168dff08011e5d42d94609cc0ca2e27`, as certified with
 //! [FIPS 140-2 certificate 4407](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4407)
-//! is supported by this crate. Support is enabled by this crate's `fips` feature.
+//! is supported by this crate. Support is enabled by this crate's `kcmvp` feature.
 //!
 //! `boring-sys` comes with a test that FIPS is enabled/disabled depending on the feature flag. You can run it as follows:
 //!
 //! ```bash
-//! $ cargo test --features fips fips::is_enabled
+//! $ cargo test --features kcmvp kcmvp::is_enabled
 //! ```
 //!
 //! ## Linking current BoringSSL version with precompiled FIPS-validated module (`bcm.o`)
 //!
 //! It's possible to link latest supported version of BoringSSL with FIPS-validated crypto module
 //! (`bcm.o`). To enable this compilation option one should enable `fips-link-precompiled`
-//! compilation feature and provide a `BORING_BSSL_FIPS_PRECOMPILED_BCM_O` env variable with a path to the
+//! compilation feature and provide a `KORECRYPTO_FIPS_PRECOMPILED_BCM_O` env variable with a path to the
 //! precompiled FIPS-validated `bcm.o` module.
 //!
 //! Note that `BORING_BSSL_PRECOMPILED_BCM_O` is never used, as linking BoringSSL with precompiled non-FIPS
@@ -96,68 +98,142 @@
 //! Presently all these key agreements are deployed by Cloudflare, but we do not guarantee continued
 //! support for them.
 
+// baremetal(UEFI 등 freestanding no_std) 빌드에서는 crate 전체를 no_std 로 만든다.
+// std 를 링크하면 std 가 정의하는 lang item(panic_impl 등)이 no_std 실행 파일이
+// 제공하는 것과 충돌한다(E0152). 이 경우 저수준 `sys` FFI 와 no_std 안전 모듈만
+// 노출하고, std 에 의존하는 고수준 API 는 전부 제외한다.
+#![cfg_attr(feature = "baremetal", no_std)]
+
+#[cfg(all(feature = "std-libc", not(feature = "picolibc")))]
+extern crate libc;
+
+#[cfg(feature = "picolibc")]
+extern crate picolibc as libc;
+
+#[cfg(not(feature = "baremetal"))]
 #[macro_use]
 extern crate bitflags;
+#[cfg(not(feature = "baremetal"))]
 #[macro_use]
 extern crate foreign_types;
-extern crate boring_sys as ffi;
-extern crate libc;
+extern crate korecrypto_sys as ffi;
 
 #[cfg(test)]
 extern crate hex;
 
-use std::ffi::{c_int, c_long, c_void};
-use std::num::NonZeroUsize;
-
 #[doc(inline)]
 pub use crate::ffi::init;
 
+/// Re-export of the low-level `korecrypto-sys` FFI bindings, so downstream
+/// crates can depend on `korecrypto` alone and still reach the raw C API
+/// (e.g. `korecrypto::sys::CRYPTO_library_init`).
+pub use ::korecrypto_sys as sys;
+
+// KCMVP 상태/엔트로피 API 는 no_std 안전(ffi 만 사용)하므로 baremetal 에서도 노출한다.
+pub mod kcmvp;
+
+// ---- 이하 고수준 API 는 std 에 의존하므로 baremetal(no_std)에서는 제외한다 ----
+#[cfg(not(feature = "baremetal"))]
+mod std_api {
+    pub(crate) use std::ffi::{c_int, c_long, c_void};
+    pub(crate) use std::num::NonZeroUsize;
+}
+#[cfg(not(feature = "baremetal"))]
+use std_api::{c_int, c_long, c_void, NonZeroUsize};
+
+#[cfg(not(feature = "baremetal"))]
 use crate::error::ErrorStack;
 
+#[cfg(not(feature = "baremetal"))]
 #[macro_use]
 mod macros;
 
+#[cfg(not(feature = "baremetal"))]
 mod bio;
+#[cfg(not(feature = "baremetal"))]
 #[macro_use]
 mod util;
+
+#[cfg(not(feature = "baremetal"))]
 pub mod aead;
+#[cfg(not(feature = "baremetal"))]
 pub mod aes;
+#[cfg(not(feature = "baremetal"))]
 pub mod asn1;
+#[cfg(not(feature = "baremetal"))]
 pub mod base64;
+#[cfg(not(feature = "baremetal"))]
 pub mod bn;
+#[cfg(not(feature = "baremetal"))]
+pub mod cmac;
+#[cfg(not(feature = "baremetal"))]
 pub mod conf;
+#[cfg(not(feature = "baremetal"))]
 pub mod derive;
+#[cfg(not(feature = "baremetal"))]
 pub mod dh;
+#[cfg(not(feature = "baremetal"))]
+pub mod drbg;
+#[cfg(not(feature = "baremetal"))]
 pub mod dsa;
+#[cfg(not(feature = "baremetal"))]
 pub mod ec;
+#[cfg(not(feature = "baremetal"))]
 pub mod ecdsa;
+#[cfg(not(feature = "baremetal"))]
+pub mod eckcdsa;
+#[cfg(not(feature = "baremetal"))]
 pub mod error;
+#[cfg(not(feature = "baremetal"))]
 pub mod ex_data;
-pub mod fips;
+#[cfg(not(feature = "baremetal"))]
 pub mod hash;
+#[cfg(not(feature = "baremetal"))]
 pub mod hmac;
+#[cfg(not(feature = "baremetal"))]
 pub mod hpke;
+#[cfg(not(feature = "baremetal"))]
+pub mod kcdsa;
+#[cfg(not(feature = "baremetal"))]
+pub mod kdf;
+#[cfg(not(feature = "baremetal"))]
 pub mod memcmp;
-#[cfg(feature = "mlkem")]
+#[cfg(all(not(feature = "baremetal"), feature = "mlkem"))]
 pub mod mlkem;
+#[cfg(not(feature = "baremetal"))]
 pub mod nid;
+#[cfg(not(feature = "baremetal"))]
 pub mod pkcs12;
+#[cfg(not(feature = "baremetal"))]
 pub mod pkcs5;
+#[cfg(not(feature = "baremetal"))]
 pub mod pkey;
-#[cfg(feature = "prf")]
+#[cfg(all(not(feature = "baremetal"), feature = "prf"))]
 pub mod prf;
+#[cfg(not(feature = "baremetal"))]
 pub mod rand;
+#[cfg(not(feature = "baremetal"))]
 pub mod rsa;
+#[cfg(not(feature = "baremetal"))]
 pub mod sha;
+#[cfg(not(feature = "baremetal"))]
 pub mod sign;
+#[cfg(not(feature = "baremetal"))]
 pub mod srtp;
+#[cfg(not(feature = "baremetal"))]
 pub mod ssl;
+#[cfg(not(feature = "baremetal"))]
 pub mod stack;
+#[cfg(not(feature = "baremetal"))]
 pub mod string;
+#[cfg(not(feature = "baremetal"))]
 pub mod symm;
+#[cfg(not(feature = "baremetal"))]
 pub mod version;
+#[cfg(not(feature = "baremetal"))]
 pub mod x509;
 
+#[cfg(not(feature = "baremetal"))]
 fn cvt_p<T>(r: *mut T) -> Result<*mut T, ErrorStack> {
     if r.is_null() {
         Err(ErrorStack::get())
@@ -166,6 +242,7 @@ fn cvt_p<T>(r: *mut T) -> Result<*mut T, ErrorStack> {
     }
 }
 
+#[cfg(not(feature = "baremetal"))]
 fn cvt_0(r: usize) -> Result<(), ErrorStack> {
     if r == 0 {
         Err(ErrorStack::get())
@@ -174,6 +251,7 @@ fn cvt_0(r: usize) -> Result<(), ErrorStack> {
     }
 }
 
+#[cfg(not(feature = "baremetal"))]
 fn cvt_0i(r: c_int) -> Result<c_int, ErrorStack> {
     if r == 0 {
         Err(ErrorStack::get())
@@ -182,6 +260,7 @@ fn cvt_0i(r: c_int) -> Result<c_int, ErrorStack> {
     }
 }
 
+#[cfg(not(feature = "baremetal"))]
 fn cvt(r: c_int) -> Result<(), ErrorStack> {
     if r <= 0 {
         Err(ErrorStack::get())
@@ -190,6 +269,7 @@ fn cvt(r: c_int) -> Result<(), ErrorStack> {
     }
 }
 
+#[cfg(not(feature = "baremetal"))]
 fn cvt_nz(r: c_int) -> Result<NonZeroUsize, ErrorStack> {
     usize::try_from(r)
         .ok()
@@ -197,6 +277,7 @@ fn cvt_nz(r: c_int) -> Result<NonZeroUsize, ErrorStack> {
         .ok_or_else(ErrorStack::get)
 }
 
+#[cfg(not(feature = "baremetal"))]
 fn cvt_n(r: c_int) -> Result<c_int, ErrorStack> {
     if r < 0 {
         Err(ErrorStack::get())
@@ -205,6 +286,7 @@ fn cvt_n(r: c_int) -> Result<c_int, ErrorStack> {
     }
 }
 
+#[cfg(not(feature = "baremetal"))]
 fn try_int<F, T>(from: F) -> Result<T, ErrorStack>
 where
     F: TryInto<T> + Send + Sync + Copy + 'static,
@@ -214,6 +296,7 @@ where
         .map_err(|_| ErrorStack::internal_error_str("int overflow"))
 }
 
+#[cfg(not(feature = "baremetal"))]
 unsafe extern "C" fn free_data_box<T>(
     _parent: *mut c_void,
     ptr: *mut c_void,

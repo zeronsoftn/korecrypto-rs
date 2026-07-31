@@ -202,6 +202,46 @@ fn msvc_lib_subdir(config: &Config) -> Option<&'static str> {
     }
 }
 
+/// FIPS 크로스(리눅스) 빌드에서 clang 이 사용할 GNU `ld` 경로를 결정한다.
+///
+/// FIPS 는 clang 을 강제하는데 clang 은 rust 트리플용 prefix ld 를 못 찾아 호스트 ld 로
+/// 폴백한다. 여기서는 cargo/CI 에 설정된 "대상 링커"(= rust 최종 링크에 쓰는 크로스 gcc)
+/// 에게 `-print-prog-name=ld` 로 그 gcc 가 쓰는 ld 의 절대경로를 물어본다. 이 ld 를
+/// clang(`-fuse-ld=`)과 최종 rust 링크 양쪽에 쓰면 크로스 링크가 되고 무결성 해시도
+/// 일치한다. 절대경로를 하드코딩하지 않고 툴체인에서 동적으로 얻는다.
+fn resolve_target_ld(config: &Config) -> Option<String> {
+    let target_us = config.target.replace('-', "_");
+    let target_env = target_us.to_uppercase();
+
+    // 대상 gcc 후보: 1) cargo 링커 설정(env 형태), 2) cc-rs 형태 CC_<target>,
+    // 3) rust 트리플에서 유도한 GNU 트리플(aarch64-unknown-linux-gnu → aarch64-linux-gnu-gcc).
+    let mut candidates: Vec<String> = [
+        std::env::var(format!("CARGO_TARGET_{target_env}_LINKER")).ok(),
+        std::env::var(format!("CC_{}", config.target)).ok(),
+        std::env::var(format!("CC_{target_us}")).ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    candidates.push(format!("{}-gcc", config.target.replace("-unknown-", "-")));
+
+    for cc in candidates {
+        let Ok(output) = Command::new(&cc).arg("-print-prog-name=ld").output() else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let ld = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // gcc 가 자신의 ld 를 해소하면 절대경로를 준다. 해소 못 하면 그냥 "ld" 라
+        // 돌려주므로(호스트 ld) 경로 형태일 때만 채택한다.
+        if ld.contains('/') {
+            return Some(ld);
+        }
+    }
+    None
+}
+
 /// Returns a new `cmake::Config` for building BoringSSL.
 ///
 /// It will add platform-specific parameters if needed.
@@ -209,15 +249,46 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     let src_path = get_boringssl_source_path(config);
     let mut boringssl_cmake = cmake::Config::new(src_path);
 
+    // Visual Studio Generator 에서는 CMAKE_C_COMPILER(clang) 이 무시된다.
+    boringssl_cmake.generator("Ninja");
+
+    boringssl_cmake.define("CMAKE_SUPPRESS_REGENERATION", "ON");
+
+    // 시스템 엔트로피 소스를 빌드에 넣지 않는다. BoringSSL 은 CRYPTO_init_sysrand /
+    // CRYPTO_sysrand 를 선언만 하고, 통합자가 정의한 심볼이 최종 링크에서 붙는다.
+    // bare-metal 은 target.h 가 KORECRYPTO_BAREMETAL 로부터 자동 유도하지만, 호스트
+    // OS 타깃에서 단독으로 켤 수 있어야 하므로 여기서 명시 전달한다.
+    //
+    // 아래의 조기 return(toolchain file / 네이티브 빌드) 보다 앞에 두어야 한다.
+    // 그 뒤의 플랫폼 블록은 크로스 빌드에서만 실행되는데, 이 옵션은 네이티브
+    // 호스트 빌드에서도 적용되어야 한다.
+    if config.features.custom_sysrand {
+        boringssl_cmake.define("KORECRYPTO_CUSTOM_SYSRAND", "1");
+    }
+
     if config.env.cmake_toolchain_file.is_some() {
         return boringssl_cmake;
     }
 
-    if config.target_os == "windows" {
-        // Explicitly use the non-debug CRT.
-        // This is required now because newest BoringSSL requires CMake 3.22 which
-        // uses the new logic with CMAKE_MSVC_RUNTIME_LIBRARY introduced in CMake 3.15.
-        // https://github.com/rust-lang/cmake-rs/pull/30#issuecomment-2969758499
+    if config.features.fips {
+        // clang 을 사용하는데 cl 문법이 들어가는 오류 방지.
+        boringssl_cmake.no_default_flags(true);
+    }
+
+    // CRT(런타임 라이브러리) 선택. windows-msvc 타깃(cl, 또는 MSVC ABI 를
+    // 시뮬레이트하는 clang)에서만 적용한다. CMake 는 Debug config + 기본값
+    // MultiThreadedDLL 로 항상 런타임 라이브러리 플래그(/MDd 상당: _DLL+_DEBUG,
+    // --dependent-lib=msvcrtd)를 주입하므로, 이를 -fms-runtime-lib 같은 컴파일
+    // 플래그로 덮어쓰려 하면 두 CRT 가 동시에 링크되어 깨진다. 반드시 CMake 의
+    // CMAKE_MSVC_RUNTIME_LIBRARY 추상화로 제어해야 한다. +crt-static 인 rust 는
+    // 정적 릴리스 CRT(libcmt)로 링크하므로 boringssl 도 MultiThreaded 로 맞춘다
+    // (그렇지 않으면 __imp_*/_wassert/_CrtDbgReport 미해결 심볼 발생).
+    //
+    // windows-gnu(예: msys CLANG64, SIMULATE_ID=GNU)에는 적용하지 않는다. 그쪽
+    // clang 은 MSVC 런타임 추상화를 지원하지 않아 CMAKE_MSVC_RUNTIME_LIBRARY 가
+    // 빌드를 깨뜨린다. (FIPS 여부와 무관하게 msvc 환경이면 필요하다.)
+    // https://github.com/rust-lang/cmake-rs/pull/30#issuecomment-2969758499
+    if config.target_os == "windows" && config.target_env == "msvc" {
         if config.target_features.iter().any(|f| f == "crt-static") {
             boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
         } else {
@@ -230,11 +301,35 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
     }
 
     if should_use_cmake_cross_compilation(config) {
+        let clang_target = config.clang_target();
         boringssl_cmake
             .define("CMAKE_CROSSCOMPILING", "true")
-            .define("CMAKE_C_COMPILER_TARGET", &config.target)
-            .define("CMAKE_CXX_COMPILER_TARGET", &config.target)
-            .define("CMAKE_ASM_COMPILER_TARGET", &config.target);
+            .define("CMAKE_C_COMPILER_TARGET", &clang_target)
+            .define("CMAKE_CXX_COMPILER_TARGET", &clang_target)
+            .define("CMAKE_ASM_COMPILER_TARGET", &clang_target);
+
+        // FIPS 는 clang 을 강제한다(아래 build 단계). 리눅스 크로스에서 clang 은 rust
+        // 트리플용 prefix ld(예: aarch64-unknown-linux-gnu-ld)를 못 찾아 호스트 ld 로
+        // 폴백해 링크가 깨지고, 무결성 해시도 최종 rust 링크(GNU ld)와 어긋난다. 대상
+        // 링커(= cargo/CI 에 설정된 크로스 gcc)에게 물어본 ld 경로를 clang 의 `-fuse-ld`
+        // 로 넘겨(모든 링크 단계 = compiler test/공유객체/실행), 최종 rust 링크와 동일한
+        // ld 를 쓰게 한다. cmake 툴체인 파일은 수정하지 않는다(하드코딩 X, 단일 지점).
+        if config.features.fips && config.target_os == "linux" {
+            if let Some(ld) = resolve_target_ld(config) {
+                let fuse_ld = format!("-fuse-ld={ld}");
+                boringssl_cmake
+                    .define("CMAKE_EXE_LINKER_FLAGS", &fuse_ld)
+                    .define("CMAKE_SHARED_LINKER_FLAGS", &fuse_ld)
+                    .define("CMAKE_MODULE_LINKER_FLAGS", &fuse_ld);
+            } else {
+                let t_env = config.target.to_uppercase().replace('-', "_");
+                println!(
+                    "cargo:warning=FIPS cross build: 대상 링커의 `ld` 를 찾지 못했습니다. \
+                     CARGO_TARGET_{t_env}_LINKER 또는 CC_{} 를 크로스 gcc 로 설정하세요.",
+                    config.target
+                );
+            }
+        }
     }
 
     if !config.features.fips {
@@ -308,12 +403,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
             boringssl_cmake.cflag(&cflag);
         }
 
-        "windows" if config.host.contains("windows") => {
-            // BoringSSL's CMakeLists.txt isn't set up for cross-compiling using Visual Studio.
-            // Disable assembly support so that it at least builds.
-            boringssl_cmake.define("OPENSSL_NO_ASM", "YES");
-        }
-
         "linux" => match &*config.target_arch {
             "x86" => {
                 boringssl_cmake.define(
@@ -354,6 +443,30 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
         },
 
         _ => {}
+    }
+
+    if config.features.uefi {
+        boringssl_cmake.define("KORECRYPTO_UEFI", "1");
+    }
+
+    // UEFI/baremetal(freestanding) + picolibc 빌드 구성.
+    // picolibc 크레이트가 `links = "c"` 로 내보내는 include 디렉터리를
+    // `DEP_C_INCLUDE` 로 받아 BoringSSL CMake 빌드에 `BAREMETAL_LIBC_INCLUDE` 로 전달한다.
+    if config.features.picolibc {
+        let libc_include = std::env::var("DEP_C_INCLUDE").expect(
+            "picolibc feature 가 켜져 있으면 DEP_C_INCLUDE 가 설정되어야 합니다 \
+             (picolibc 의존성이 links=\"c\" 로 노출). cargo clean 후 다시 빌드해 보세요.",
+        );
+        // bare-metal(freestanding) 공통 구성. picolibc feature 자체가 freestanding
+        // 신호이므로 OS 와 무관하게 적용한다(외부 libc include + 번들 libc++).
+        boringssl_cmake
+            // 외부 freestanding libc(picolibc) 의 include 디렉터리.
+            .define("BAREMETAL_LIBC_INCLUDE", &libc_include)
+            // freestanding 에는 시스템 C++ 표준 라이브러리가 없으므로 번들
+            // libc++/libc++abi 를 함께 빌드한다.
+            .define("USE_CUSTOM_LIBCXX", "1")
+            // try_compile 도 실행 파일이 아닌 정적 라이브러리로(링크 단계 회피).
+            .define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY");
     }
 
     boringssl_cmake
@@ -430,7 +543,33 @@ fn get_extra_clang_args_for_bindgen(config: &Config) -> Vec<String> {
                 }
             }
         }
-        _ => {}
+        _ => {
+            if config.features.baremetal {
+                // BoringSSL 공개 헤더는 base.h 를 통해 stdlib.h/sys/types.h 를 포함하는데,
+                // UEFI 에서는 이를 picolibc 가 공급한다. libclang 이 picolibc 헤더를
+                // 찾고, uefi 타깃으로 헤더를 파싱하도록 인자를 추가한다.
+                if let Ok(inc) = std::env::var("DEP_C_INCLUDE") {
+                    params.push("-I".to_string());
+                    params.push(inc);
+                }
+                params.push(format!("--target={}", config.clang_target()));
+            } else if config.target_os == "windows" && config.target_env == "msvc" {
+                // libclang 은 자신이 빌드된 기본 타깃으로 헤더를 파싱한다. msys2
+                // CLANG64 셸처럼 PATH 상의 libclang 이 *-windows-gnu 기본 타깃을
+                // 가지면 MSVC UCRT 가 아니라 C:/msys64/clang64/include 의 GNU
+                // stdlib.h 를 물고, BoringSSL 공개 헤더 파싱이 `expected ';'`
+                // 류의 에러로 실패한다. MSVC ABI 타깃을 명시한다.
+                params.push(format!("--target={}", config.clang_target()));
+            }
+            // in-process libclang 은 MSVC UCRT/SDK 시스템 include 를 자동 감지 못함.
+            // 경로 탐색은 여기서 안 하고, 임베딩 빌드가 env 로 넘긴 디렉터리를 전달.
+            if let Ok(dirs) = std::env::var("KORECRYPTO_BINDGEN_EXTRA_INCLUDE") {
+                for dir in dirs.split(';').filter(|s| !s.is_empty()) {
+                    params.push("-isystem".to_string());
+                    params.push(dir.to_string());
+                }
+            }
+        }
     }
 
     params
@@ -453,7 +592,11 @@ fn ensure_patches_applied(config: &Config) -> io::Result<()> {
         );
     }
 
-    let mut lock_file = LockFile::open(&config.out_dir.join(".patch_lock"))?;
+    let lock_file_path = config.out_dir.join(".patch_lock");
+    if lock_file_path.exists() {
+        return Ok(());
+    }
+    let mut lock_file = LockFile::open(&lock_file_path)?;
     let src_path = get_boringssl_source_path(config);
     let has_git = src_path.join(".git").exists();
 
@@ -565,14 +708,31 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
             cfg.env("CMAKE_BUILD_PARALLEL_LEVEL", num_jobs);
         }
 
-        if config.features.fips {
+        // FIPS(delocate)와 picolibc(freestanding + USE_CUSTOM_LIBCXX)은 clang 을
+        // 강제한다. cc-rs 가 기본 주입하는 플래그(예: uefi→windows-gnu 로의 `--target`)도
+        // 비워 CMAKE_*_COMPILER_TARGET 으로만 타깃을 지정하게 한다. 이 초기화가 없으면
+        // 비-FIPS UEFI 빌드에서 CMake 가 컴파일러를 GNU 로 인식해 USE_CUSTOM_LIBCXX 검사가
+        // 실패한다. (컴파일러는 PATH 상의 clang — UEFI 는 clang>=19 필요하므로 호출부가
+        // PATH/CC 로 clang-22 등을 지정한다.)
+        if config.features.fips || config.features.picolibc {
             cfg.define("CMAKE_C_COMPILER", "clang")
                 .define("CMAKE_CXX_COMPILER", "clang++")
                 .define("CMAKE_ASM_COMPILER", "clang")
-                .define("FIPS", "1");
+                .define("CMAKE_C_FLAGS", "")
+                .define("CMAKE_CXX_FLAGS", "")
+                .define("CMAKE_ASM_FLAGS", "");
+        }
+        if config.features.fips {
+            cfg.define("FIPS", "1");
         }
 
-        cfg.build_target("ssl").build();
+        // bare-metal(freestanding, picolibc) 빌드는 crypto 만 빌드한다. ssl 은 소켓/
+        // 시계 등 OS 의존 헤더(sys/socket.h 등)를 요구해 freestanding 에서 빌드되지
+        // 않으며, bare-metal 용도(KCMVP 암호 모듈)에는 TLS 스택이 필요 없다.
+        let crypto_only = config.features.baremetal || config.features.picolibc;
+        if !crypto_only {
+            cfg.build_target("ssl").build();
+        }
         let path = cfg.build_target("crypto").build();
         let build_dir = path.join("build");
         if build_dir.exists() {
@@ -650,8 +810,52 @@ fn main() -> ExitCode {
     }
 }
 
+/// `dir` 하위의 C/C++ 소스·헤더 파일을 재귀적으로 찾아 rerun-if-changed 로 등록한다.
+/// 감시 대상은 빌드 입력(.h/.hpp/.c/.cc/.cpp/.inc)만. 존재하지 않는 경로는 조용히
+/// 무시한다(예: source_path 구성 차이).
+fn emit_rerun_if_changed_recursive(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            emit_rerun_if_changed_recursive(&path);
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if matches!(ext, "h" | "hpp" | "c" | "cc" | "cpp" | "inc") {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+    }
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
+
+    // rerun-if-changed 는 반드시 빌드의 "입력" 파일을 가리켜야 한다.
+    // get_boringssl_source_path() 는 source_path 미설정 시 deps/boringssl 을 OUT_DIR 로
+    // 복사한 경로를 돌려주는데, 그 복사본은 매 빌드마다 build.rs 가 새로 만들어 mtime 이
+    // 갱신된다. 복사본을 감시하면 cargo 가 항상 "변경됨"으로 판단해
+    // build.rs 재실행 → 재복사 → ninja 전체 재빌드가 무한 반복된다. 따라서 복사 이전의
+    // 원본 소스(source_path 또는 submodule deps/boringssl)를 감시한다.
+    let watch_src = config
+        .env
+        .source_path
+        .clone()
+        .unwrap_or_else(|| config.manifest_dir.join("deps").join("boringssl"));
+    println!(
+        "cargo:rerun-if-changed={}",
+        watch_src.join("CMakeLists.txt").display()
+    );
+    // CMakeLists.txt 뿐 아니라 실제 빌드 입력인 C/C++ 소스와 공개 헤더도 감시한다.
+    // 이렇게 하지 않으면 crypto/*.cc(.inc) 나 include/openssl/*.h 를 고쳐도 build.rs 가
+    // 재실행되지 않아 OUT_DIR 복사본·libcrypto.a·bindgen 산출물이 stale 로 남는다
+    // (예: crypto.h 에 함수를 추가해도 ffi 바인딩이 생성되지 않음). watch_src 는 복사
+    // 이전의 원본이라 build.rs 가 수정하지 않으므로 감시해도 무한 재빌드가 없다.
+    for sub in ["include", "crypto"] {
+        emit_rerun_if_changed_recursive(&watch_src.join(sub));
+    }
     ensure_patches_applied(&config)?;
     if !config.env.docs_rs {
         emit_link_directives(&config);
@@ -669,7 +873,7 @@ fn emit_link_directives(config: &Config) {
     let msvc_lib_subdir = msvc_lib_subdir(config);
 
     let subdirs =
-        if config.is_bazel || (config.features.is_fips_like() && config.env.path.is_some()) {
+        if config.is_bazel || (config.features.is_kcmvp_like() && config.env.path.is_some()) {
             &["lib"][..]
         } else {
             &["lib", "crypto", "ssl", ""][..]
@@ -688,11 +892,23 @@ fn emit_link_directives(config: &Config) {
         println!("cargo:rustc-link-lib={cpp_lib}");
     }
     println!("cargo:rustc-link-lib=static=crypto");
-    println!("cargo:rustc-link-lib=static=ssl");
+    // bare-metal(freestanding, picolibc) 에서는 ssl 을 빌드하지 않으므로 링크도 하지
+    // 않는다. (생성된 SSL FFI 선언은 호출되지 않는 한 링크를 요구하지 않는다.)
+    if !config.features.picolibc {
+        println!("cargo:rustc-link-lib=static=ssl");
+    }
 
     if config.target_os == "windows" {
         // Rust 1.87.0 compat - https://github.com/rust-lang/rust/pull/138233
         println!("cargo:rustc-link-lib=advapi32");
+    }
+
+    // FIPS windows-msvc 빌드는 _NO_CRT_STDIO_INLINE 로 stdio 인라인을 끈다(모듈 .text 에
+    // CRT 글루가 박혀 무결성 해시가 깨지는 것을 막기 위함 — build_boringssl 참고). 그러면
+    // UCRT 의 레거시 named 심볼(_vsnprintf 등)이 인라인으로 제공되지 않아, 이를 공급하는
+    // legacy_stdio_definitions 를 최종 링크에 추가해야 한다(모듈 밖 함수라 해시엔 무관).
+    if config.features.fips && config.target_os == "windows" && config.target_env == "msvc" {
+        println!("cargo:rustc-link-lib=legacy_stdio_definitions");
     }
 }
 
@@ -739,6 +955,9 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         .derive_default(true)
         .derive_eq(false)
         .derive_partialeq(false)
+        // no_std 호환: 생성 바인딩이 std 대신 core 를 참조하게 한다(UEFI 등
+        // freestanding 타깃 지원). std 타깃에서도 core::ffi 타입은 동일하다.
+        .use_core()
         .default_enum_style(bindgen::EnumVariation::NewType {
             is_bitfield: false,
             is_global: false,
@@ -747,13 +966,27 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         .generate_comments(true)
         .fit_macro_constants(false)
         .size_t_is_usize(true)
-        .layout_tests(config.env.debug.is_some())
+        // UEFI 에서는 레이아웃 테스트를 끈다. clang 은 x86_64-unknown-uefi 를 LLP64
+        // (long=4)로 보지만 Rust 의 core::ffi::c_long 은 (target_os=uefi 가 windows 가
+        // 아니라) i64 로 정의되어, `long` 을 쓰는 구조체(ldiv_t/fd_set 등)의 크기
+        // 단언이 어긋난다. crypto API 는 이런 타입을 쓰지 않으므로 단언만 비활성화한다.
+        .layout_tests(config.env.debug.is_some() && config.target_os != "uefi")
         .merge_extern_blocks(true)
         .prepend_enum_name(true)
         .blocklist_type("max_align_t") // Not supported by bindgen on all targets, not used by BoringSSL
         .clang_args(get_extra_clang_args_for_bindgen(config))
         .clang_arg("-I")
         .clang_arg(include_path.display().to_string());
+
+    if config.features.uefi {
+        builder = builder.clang_arg("-DKORECRYPTO_UEFI")
+    }
+    if config.features.baremetal {
+        builder = builder.clang_arg("-DKORECRYPTO_BAREMETAL")
+    }
+    if config.features.custom_sysrand {
+        builder = builder.clang_arg("-DKORECRYPTO_CUSTOM_SYSRAND")
+    }
 
     if let Some(sysroot) = &config.env.sysroot {
         builder = builder
@@ -774,6 +1007,16 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
 
     let must_have_headers = [
         "aes.h",
+        "aria.h",
+        "lea.h",
+        "seed.h",
+        "hight.h",
+        "lsh.h",
+        "kbkdf.h",
+        "drbg_kcmvp.h",
+        "ctrdrbg.h",
+        "eckcdsa.h",
+        "kcdsa.h",
         "asn1_mac.h",
         "asn1t.h",
         "blake2.h",
@@ -798,6 +1041,7 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "hrss.h",
         "md4.h",
         "md5.h",
+        "mldsa.h",
         "mlkem.h",
         "obj_mac.h",
         "objects.h",
@@ -806,7 +1050,9 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
         "rc4.h",
         "ripemd.h",
         "siphash.h",
+        "slhdsa.h",
         "srtp.h",
+        "tls_prf.h",
         "trust_token.h",
     ];
     for (i, header) in must_have_headers.into_iter().chain(headers).enumerate() {

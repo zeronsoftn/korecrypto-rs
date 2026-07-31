@@ -1,0 +1,38 @@
+# korecrypto-sys 의 picolibc(UEFI) 연동을 x86_64-unknown-uefi 타깃으로 실제 링크까지
+# 검증하기 위한 최소 UEFI 애플리케이션. 메인 워크스페이스(host 타깃 빌드)와 섞이지
+# 않도록 독립 워크스페이스로 둔다.
+[package]
+name = "uefi-smoketest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "uefi-smoketest"
+path = "src/main.rs"
+
+[features]
+default = []
+# 활성화 시 자가시험 대신 KCMVP 잡음원 샘플을 수집해 시리얼로 hex 덤프한다.
+# (엔트로피 평가 파일 생성용. run-entropy.sh 가 호스트에서 캡처·포맷한다.)
+entropy-dump = []
+
+[dependencies]
+# UEFI 런타임: 전역 할당자 + panic 핸들러를 제공한다.
+uefi = { version = "0.37", features = ["alloc", "global_allocator", "panic_handler", "logger"] }
+# 검증 대상: 고수준 korecrypto(boring) 크레이트를 UEFI(no_std)에서 사용.
+# (korecrypto 는 korecrypto-sys 를 재-export 하므로 raw FFI 도 korecrypto::sys 로 접근.)
+korecrypto = { path = "../boring", default-features = false, features = ["kcmvp", "uefi"] }
+log = { version = "0.4.33", default-features = false }
+# picolibc 를 직접 참조해 링크에 끌어들이고, malloc/free/... 를 Rust 전역
+# 할당자(uefi 의 global_allocator)에 위임하도록 malloc feature 를 켠다.
+picolibc = { version = "0.0.7", features = ["bindings", "malloc", "coff", "posix-console", "fast-bufio"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+# 독립 워크스페이스 표시(상위 워크스페이스에 흡수되지 않게 한다).
+[workspace]

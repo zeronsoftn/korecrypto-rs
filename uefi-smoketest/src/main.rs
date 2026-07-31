@@ -1,0 +1,350 @@
+// x86_64-unknown-uefi 타깃에서 korecrypto-sys(FIPS + picolibc) 를 실제 UEFI 환경
+// (QEMU + OVMF)에서 부팅·실행해 FIPS 자가시험을 검증하는 스모크 테스트.
+//
+//  - 시리얼(COM1, 16550)로 결과를 출력한다 → QEMU `-serial stdio` 로 호스트에서 캡처.
+//  - FIPS_mode / BORINGSSL_integrity_test / BORINGSSL_self_test_all 을 실행하고
+//    반환값과 최종 "RESULT: PASS|FAIL" 한 줄을 출력한다.
+//  - 끝나면 ACPI(S5)로 QEMU 를 종료한다.
+//
+// 빌드·실행은 run-qemu.sh 또는 README.md 참고.
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+extern crate picolibc;
+
+use core::arch::asm;
+use core::ffi::{c_int, c_void};
+use uefi::prelude::*;
+use uefi::proto::rng::Rng;
+
+use log;
+
+#[allow(improper_ctypes)]
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+unsafe fn outw(port: u16, val: u16) {
+    asm!("out dx, ax", in("dx") port, in("ax") val, options(nomem, nostack, preserves_flags));
+}
+
+#[cfg(target_arch = "x86_64")]
+/// QEMU(q35/ICH9) ACPI 로 전원 종료(S5). 실패 시 무한 대기(호스트 timeout 이 종료).
+unsafe fn poweroff() -> ! {
+    outw(0x604, 0x2000); // PM1a_CNT: SLP_EN | SLP_TYP(S5)
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn poweroff() -> ! {
+    const PSCI_SYSTEM_OFF: usize = 0x8400_0008;
+
+    unsafe {
+        asm!(
+            "hvc #0",
+            in("x0") PSCI_SYSTEM_OFF,
+            options(noreturn)
+        );
+    }
+}
+
+#[no_mangle]
+extern "C" fn write(fd: c_int, buf: *const c_void, count: usize) -> isize {
+    // boringssl/libc 의 stdout(1)/stderr(2) 출력을 로거(→시리얼)로 전달한다.
+    // 자가시험 실패/abort 사유 등 진단 메시지를 호스트에서 볼 수 있게 한다.
+    if (fd == 1 || fd == 2) && !buf.is_null() && count > 0 {
+        let bytes = unsafe { core::slice::from_raw_parts(buf as *const u8, count) };
+        match core::str::from_utf8(bytes) {
+            Ok(s) => log::info!("[bssl] {}", s.trim_end_matches(['\r', '\n'])),
+            Err(_) => log::info!("[bssl] <{count} bytes>"),
+        }
+    }
+    count as isize
+}
+
+#[no_mangle]
+extern "C" fn read(_fd: c_int, _buf: *mut c_void, _count: usize) -> isize {
+    0
+}
+
+#[no_mangle]
+extern "C" fn lseek(_fd: c_int, _off: i64, _whence: c_int) -> i64 {
+    -1
+}
+
+#[no_mangle]
+extern "C" fn close(_fd: c_int) -> c_int {
+    0
+}
+
+#[no_mangle]
+extern "C" fn _exit(_code: c_int) -> ! {
+    unsafe { poweroff() }
+}
+
+// ---- 시스템 엔트로피 소스 (korecrypto-sys 의 `custom-sysrand` 계약) ----
+//
+// bare-metal 빌드의 BoringSSL 은 CRYPTO_init_sysrand / CRYPTO_sysrand 를 선언만
+// 하고 구현하지 않는다. UEFI 에는 OS RNG 가 없으므로 통합자인 우리가 펌웨어의
+// EFI_RNG_PROTOCOL 로 두 심볼을 제공한다. 이 두 함수가 없으면 링크되지 않는다.
+
+/// 초기화가 필요 없다. 프로토콜은 매 호출마다 연다(Boot Services 가 살아 있는
+/// 동안에만 유효하므로 핸들을 캐시하지 않는다).
+#[no_mangle]
+extern "C" fn CRYPTO_init_sysrand() {}
+
+/// `out[..len]` 을 EFI_RNG_PROTOCOL 난수로 채운다.
+///
+/// BoringSSL 계약상 이 함수는 실패할 수 없다. 엔트로피를 얻지 못하면 품질이
+/// 낮은 바이트를 돌려주는 대신 즉시 중단해야 한다.
+#[no_mangle]
+extern "C" fn CRYPTO_sysrand(out: *mut u8, len: usize) {
+    if len == 0 {
+        return;
+    }
+    assert!(!out.is_null(), "CRYPTO_sysrand: null buffer");
+
+    // SAFETY: BoringSSL 이 `len` 바이트 쓰기 가능한 버퍼를 넘긴다고 보장한다.
+    let buf = unsafe { core::slice::from_raw_parts_mut(out, len) };
+
+    let handle = uefi::boot::get_handle_for_protocol::<Rng>()
+        .expect("EFI_RNG_PROTOCOL unavailable: cannot obtain entropy");
+    let mut rng = uefi::boot::open_protocol_exclusive::<Rng>(handle)
+        .expect("failed to open EFI_RNG_PROTOCOL");
+
+    // algorithm=None 이면 펌웨어의 기본(가장 강한) 알고리즘을 쓴다.
+    rng.get_rng(None, buf)
+        .expect("EFI_RNG_PROTOCOL GetRNG failed");
+}
+
+// mingw64 어셈블리의 SE 핸들러(se_handler)들은 `__imp_RtlVirtualUnwind` 를
+// 간접 호출한다. UEFI 는 예외(-fno-exceptions)를 사용하지 않으므로 실제로 호출되지
+// 않는다. 링크 오류 해소를 위해 null 포인터 IAT 엔트리를 제공한다.
+core::arch::global_asm!(
+    ".globl __imp_RtlVirtualUnwind",
+    "__imp_RtlVirtualUnwind:",
+    "    .quad 0",
+);
+
+// MS x64 ABI(=UEFI)에서 clang 은 스택 프레임이 한 페이지(4KB)를 넘으면 스택 프로빙
+// 호출(__chkstk)을 삽입한다. UEFI 부팅 스택은 전부 커밋되어 있어 프로빙이 불필요
+// 하므로, RAX(요청 크기)를 보존하고 즉시 반환하는 no-op 스텁으로 충족한다.
+core::arch::global_asm!(
+    ".globl __chkstk",
+    "__chkstk:",
+    "    ret",
+    ".globl ___chkstk_ms",
+    "___chkstk_ms:",
+    "    ret",
+);
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn read_cr0() -> u64 {
+    let v: u64;
+    // SAFETY: reading CR0 is a privileged but side-effect-free register read;
+    // the loader runs at ring 0.
+    unsafe {
+        core::arch::asm!("mov {}, cr0", out(reg) v, options(nomem, nostack, preserves_flags));
+    }
+    v
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn read_cr4() -> u64 {
+    let v: u64;
+    // SAFETY: as read_cr0, for CR4.
+    unsafe {
+        core::arch::asm!("mov {}, cr4", out(reg) v, options(nomem, nostack, preserves_flags));
+    }
+    v
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn write_cr0(v: u64) {
+    // SAFETY: ring-0 control-register write. `nomem` is intentionally omitted:
+    // toggling CR0 affects how the CPU executes, so the compiler must not move
+    // memory accesses across it.
+    unsafe {
+        core::arch::asm!("mov cr0, {}", in(reg) v, options(nostack, preserves_flags));
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn write_cr4(v: u64) {
+    // SAFETY: as write_cr0, for CR4.
+    unsafe {
+        core::arch::asm!("mov cr4, {}", in(reg) v, options(nostack, preserves_flags));
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn bit(v: u64, b: u64) -> u32 {
+    ((v & b) != 0) as u32
+}
+
+#[cfg(target_arch = "x86_64")]
+pub fn report_and_enable_xmm() {
+    const CR0_MP: u64 = 1 << 1;
+    const CR0_EM: u64 = 1 << 2;
+    const CR0_TS: u64 = 1 << 3;
+    const CR0_NE: u64 = 1 << 5;
+
+    const CR4_OSFXSR: u64 = 1 << 9;
+    const CR4_OSXMMEXCPT: u64 = 1 << 10;
+
+    let cr0 = read_cr0();
+    let cr4 = read_cr4();
+
+    log::info!(
+        "cpu: current CR0.MP[1]={} CR0.EM[2]={} CR0.TS[3]={} CR0.NE[5]={} \
+         CR4.OSFXSR[9]={} CR4.OSXMMEXCPT[10]={}",
+        bit(cr0, CR0_MP),
+        bit(cr0, CR0_EM),
+        bit(cr0, CR0_TS),
+        bit(cr0, CR0_NE),
+        bit(cr4, CR4_OSFXSR),
+        bit(cr4, CR4_OSXMMEXCPT),
+    );
+
+    /*
+     * Enable x87 FPU / SSE / XMM.
+     *
+     * CR0.MP = 1
+     * CR0.EM = 0
+     * CR0.TS = 0
+     * CR0.NE = 1
+     *
+     * CR4.OSFXSR     = 1
+     * CR4.OSXMMEXCPT = 1
+     */
+    let new_cr0 = (cr0 | CR0_MP | CR0_NE) & !(CR0_EM | CR0_TS);
+    let new_cr4 = cr4 | CR4_OSFXSR | CR4_OSXMMEXCPT;
+
+    if new_cr0 != cr0 {
+        write_cr0(new_cr0);
+    }
+
+    if new_cr4 != cr4 {
+        write_cr4(new_cr4);
+    }
+
+    unsafe {
+        core::arch::asm!(
+            "fninit",
+            options(nostack, preserves_flags)
+        );
+
+        let mxcsr: u32 = 0x1f80;
+        core::arch::asm!(
+            "ldmxcsr [{}]",
+            in(reg) &mxcsr,
+            options(nostack, preserves_flags)
+        );
+    }
+
+    log::info!(
+        "cpu: enabled XMM CR0 {:#x}->{:#x} CR4 {:#x}->{:#x} \
+         (MP=1 EM=0 TS=0 NE=1 OSFXSR=1 OSXMMEXCPT=1 MXCSR=0x1f80)",
+        cr0,
+        new_cr0,
+        cr4,
+        new_cr4,
+    );
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub fn report_and_enable_xmm() {}
+
+#[entry]
+fn main() -> Status {
+    let _ = uefi::helpers::init();
+
+    report_and_enable_xmm();
+
+    unsafe {
+        log::info!("=== korecrypto UEFI KCMVP smoketest ===");
+
+        // KCMVP 엔트로피는 이 크레이트가 제공하는 CRYPTO_sysrand(EFI_RNG_PROTOCOL)
+        // 로 공급된다. 별도 초기화 호출은 없고, BoringSSL 이 필요할 때 부른다.
+        korecrypto::sys::CRYPTO_library_init();
+
+        #[cfg(feature = "entropy-dump")]
+        {
+            entropy_dump();
+            poweroff();
+        }
+
+        #[cfg(not(feature = "entropy-dump"))]
+        {
+            // KCMVP 자가시험 3종 실행(각 1=성공).
+            let kcmvp_mode = korecrypto::sys::KCMVP_mode();
+            log::info!("KCMVP_mode={kcmvp_mode}");
+
+            let integrity = korecrypto::sys::BORINGSSL_integrity_test();
+            log::info!("BORINGSSL_integrity_test={integrity}");
+
+            let self_test = korecrypto::sys::BORINGSSL_self_test_all();
+
+            log::info!("BORINGSSL_self_test_all={self_test}");
+
+            let ok = kcmvp_mode == 1 && integrity == 1 && self_test == 1;
+
+            // run-qemu.sh 가 grep 하는 결과 표지.
+            log::info!("RESULT: {}", if ok { "PASS" } else { "FAIL" });
+
+            poweroff();
+        }
+    }
+}
+
+// KCMVP 잡음원 샘플을 수집해 시리얼로 hex 덤프한다. 실제 KCMVP 모듈 경로
+// (KCMVP_entropy_raw_noise_samples → bssl::entropy::GetSamples)로 수집하며,
+// 호스트 스크립트(run-entropy.sh)가 마커 사이의 hex 를 캡처해 평가 파일로 만든다.
+//
+// 출력 형식(시리얼):
+//   ENTROPY_BEGIN num=<N> bits=<B>
+//   EDATA <hex chunk>
+//   ... (여러 줄) ...
+//   ENTROPY_END ok=<0|1>
+#[cfg(feature = "entropy-dump")]
+unsafe fn entropy_dump() {
+    use alloc::vec;
+
+    // KCMVP 엔트로피 평가가 요구하는 고정 샘플 개수.
+    const NUM_SAMPLES: usize = 250_000;
+    // 한 줄에 담을 샘플(바이트) 수. 시리얼 로그 줄 수를 줄이려 넉넉히 잡는다.
+    const PER_LINE: usize = 256;
+
+    let bits = korecrypto::sys::KCMVP_entropy_noise_sample_bits();
+    log::info!("ENTROPY_BEGIN num={NUM_SAMPLES} bits={bits}");
+
+    let mut samples = vec![0u8; NUM_SAMPLES];
+    let ok = korecrypto::sys::KCMVP_entropy_raw_noise_samples(samples.as_mut_ptr(), samples.len());
+
+    if ok == 1 {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        let mut line = [0u8; PER_LINE * 2];
+        let mut i = 0;
+        while i < samples.len() {
+            let n = core::cmp::min(PER_LINE, samples.len() - i);
+            for j in 0..n {
+                let b = samples[i + j];
+                line[j * 2] = HEX[(b >> 4) as usize];
+                line[j * 2 + 1] = HEX[(b & 0x0f) as usize];
+            }
+            // SAFETY: line[..n*2] 는 ASCII hex 만 담는다.
+            let s = core::str::from_utf8_unchecked(&line[..n * 2]);
+            log::info!("EDATA {s}");
+            i += n;
+        }
+    }
+
+    log::info!("ENTROPY_END ok={ok}");
+}

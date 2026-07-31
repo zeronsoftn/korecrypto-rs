@@ -16,18 +16,18 @@ if [[ "$(git diff --stat)" != '' ]]; then
   exit 1
 fi
 
-echo "===  Publishing boring-sys... ==="
+echo "===  Publishing korecrypto-sys... ==="
 (cd boring-sys && cargo publish)
 sleep 20
 
-echo "===  Publishing boring... ==="
+echo "===  Publishing korecrypto... ==="
 (cd boring && cargo publish)
 sleep 20
 
-echo "===  Publishing tokio-boring... ==="
+echo "===  Publishing tokio-korecrypto... ==="
 (cd tokio-boring && cargo publish)
 sleep 20
 
-echo "===  Publishing hyper-boring... ==="
+echo "===  Publishing hyper-korecrypto... ==="
 (cd hyper-boring && cargo publish)
 sleep 20

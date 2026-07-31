@@ -599,10 +599,10 @@ impl EcKey<Public> {
     /// # Example
     ///
     /// ```no_run
-    /// use boring::bn::BigNumContext;
-    /// use boring::ec::*;
-    /// use boring::nid::Nid;
-    /// use boring::pkey::PKey;
+    /// use korecrypto::bn::BigNumContext;
+    /// use korecrypto::ec::*;
+    /// use korecrypto::nid::Nid;
+    /// use korecrypto::pkey::PKey;
     ///
     /// // get bytes from somewhere, i.e. this will not produce a valid key
     /// let public_key: Vec<u8> = vec![];

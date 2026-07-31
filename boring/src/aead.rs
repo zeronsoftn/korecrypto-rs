@@ -39,7 +39,7 @@
 //! # Example
 //!
 //! ```
-//! use boring::aead::{AeadCtx, Algorithm};
+//! use korecrypto::aead::{AeadCtx, Algorithm};
 //!
 //! let algorithm = Algorithm::aes_128_gcm();
 //! let ctx = AeadCtx::new_default_tag(&algorithm, &[0u8; 16]).unwrap();
@@ -108,6 +108,55 @@ impl Algorithm {
     #[must_use]
     pub fn xchacha20_poly1305() -> Self {
         unsafe { Self(ffi::EVP_aead_xchacha20_poly1305()) }
+    }
+
+    /// ARIA-128 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_aria_128_ccm)]
+    #[must_use]
+    pub fn aria_128_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_aria_128_ccm()) }
+    }
+
+    /// ARIA-192 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_aria_192_ccm)]
+    #[must_use]
+    pub fn aria_192_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_aria_192_ccm()) }
+    }
+
+    /// ARIA-256 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_aria_256_ccm)]
+    #[must_use]
+    pub fn aria_256_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_aria_256_ccm()) }
+    }
+
+    /// LEA-128 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_lea_128_ccm)]
+    #[must_use]
+    pub fn lea_128_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_lea_128_ccm()) }
+    }
+
+    /// LEA-192 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_lea_192_ccm)]
+    #[must_use]
+    pub fn lea_192_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_lea_192_ccm()) }
+    }
+
+    /// LEA-256 in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_lea_256_ccm)]
+    #[must_use]
+    pub fn lea_256_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_lea_256_ccm()) }
+    }
+
+    /// SEED in CCM mode (KCMVP), with 16-byte tags and 12-byte nonces.
+    #[corresponds(EVP_aead_seed_ccm)]
+    #[must_use]
+    pub fn seed_ccm() -> Self {
+        unsafe { Self(ffi::EVP_aead_seed_ccm()) }
     }
 
     /// Returns the key length, in bytes, required by this algorithm.
@@ -252,7 +301,7 @@ impl AeadCtxRef {
     /// # Examples
     ///
     /// ```
-    /// use boring::aead::{AeadCtx, Algorithm};
+    /// use korecrypto::aead::{AeadCtx, Algorithm};
     ///
     /// let algorithm = Algorithm::chacha20_poly1305();
     /// let ctx = AeadCtx::new(&algorithm, &[7u8; 32], algorithm.max_tag_len()).unwrap();
@@ -419,6 +468,124 @@ impl AeadCtxRef {
 #[cfg(test)]
 mod tests {
     use super::{AeadCtx, Algorithm};
+    use hex::FromHex;
+
+    // ARIA-CCM KAT from OpenSSL's evpciph_aria.txt (M=16, L=3, 12-byte nonce).
+    #[test]
+    fn aria_ccm_kat() {
+        let key = Vec::from_hex("974bee725d44fc3992267b284c3c6750").unwrap();
+        let nonce = Vec::from_hex("000020e8f5eb00000000315e").unwrap();
+        let aad = Vec::from_hex("8008315ebf2e6fe020e8f5eb").unwrap();
+        let pt = Vec::from_hex("f57af5fd4ae19562976ec57a5a7ad55a5af5c5e5c5fdf5c55ad57a4a7272d57262e9729566ed66e97ac54a4a5a7ad5e15ae5fdd5fd5ac5d56ae56ad5c572d54ae54ac55a956afd6aed5a4ac562957a9516991691d572fd14e97ae962ed7a9f4a955af572e162f57a956666e17ae1f54a95f566d54a66e16e4afd6a9f7ae1c5c55ae5d56afde916c5e94a6ec56695e14afde1148416e94ad57ac5146ed59d1cc5").unwrap();
+        let expected_ct = Vec::from_hex("621e408a2e455505b39f704dcbac4307daabbd6d670abc4e42f2fd2fca263f094f4683e6fb0b10c5093d42b69dce0ba546520e7c4400975713f3bde93ef131160b9cbcd6df78a1502be7c6ea8d395b9ed0078819c3105c0ab92cb67b16ba51bb1f53508738bf7a37c9a905439b88b7af9d51a407916fdfea8d43bf253721846dc1671391225fc58d9d0693c8ade6a4ffb034ee6543dd4e651b7a084eae60f855").unwrap();
+        let expected_tag = Vec::from_hex("40f04b6467e300f6b336aedf9df4185b").unwrap();
+
+        let algorithm = Algorithm::aria_128_ccm();
+        let ctx = AeadCtx::new(&algorithm, &key, 16).unwrap();
+
+        // Seal in place and verify ciphertext + detached tag against the KAT.
+        let mut buffer = pt.clone();
+        let mut tag = [0u8; 16];
+        let tag_written = ctx
+            .seal_in_place(&nonce, buffer.as_mut_slice(), &mut tag, &aad)
+            .unwrap();
+        assert_eq!(buffer, expected_ct, "ARIA-CCM ciphertext mismatch");
+        assert_eq!(tag_written, &expected_tag[..], "ARIA-CCM tag mismatch");
+
+        // Open the KAT ciphertext and recover the plaintext.
+        let mut ct = expected_ct.clone();
+        ctx.open_in_place(&nonce, ct.as_mut_slice(), &expected_tag, &aad)
+            .unwrap();
+        assert_eq!(ct, pt, "ARIA-CCM decrypt mismatch");
+
+        // A corrupted tag must fail authentication.
+        let mut ct2 = expected_ct.clone();
+        let mut bad_tag = expected_tag.clone();
+        bad_tag[0] ^= 0x01;
+        assert!(
+            ctx.open_in_place(&nonce, ct2.as_mut_slice(), &bad_tag, &aad)
+                .is_err(),
+            "ARIA-CCM accepted a forged tag"
+        );
+    }
+
+    // LEA-CCM KAT (generated from the KISA LEA CCM reference; M=16, L=3).
+    #[test]
+    fn lea_ccm_kat() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let expected_ct =
+            Vec::from_hex("09d9e17d30b1f68a684efd1c2834991cd504bf8fb17398bfed5838a96e5e6856")
+                .unwrap();
+        let expected_tag = Vec::from_hex("f42035cc0bccde00ee480167fc2dde7e").unwrap();
+
+        let algorithm = Algorithm::lea_128_ccm();
+        let ctx = AeadCtx::new(&algorithm, &key, 16).unwrap();
+
+        let mut buffer = pt.clone();
+        let mut tag = [0u8; 16];
+        let tag_written = ctx
+            .seal_in_place(&nonce, buffer.as_mut_slice(), &mut tag, &aad)
+            .unwrap();
+        assert_eq!(buffer, expected_ct, "LEA-CCM ciphertext mismatch");
+        assert_eq!(tag_written, &expected_tag[..], "LEA-CCM tag mismatch");
+
+        let mut ct = expected_ct.clone();
+        ctx.open_in_place(&nonce, ct.as_mut_slice(), &expected_tag, &aad)
+            .unwrap();
+        assert_eq!(ct, pt, "LEA-CCM decrypt mismatch");
+
+        let mut ct2 = expected_ct.clone();
+        let mut bad_tag = expected_tag.clone();
+        bad_tag[0] ^= 0x01;
+        assert!(
+            ctx.open_in_place(&nonce, ct2.as_mut_slice(), &bad_tag, &aad)
+                .is_err(),
+            "LEA-CCM accepted a forged tag"
+        );
+    }
+
+    // SEED-CCM KAT (generated from the KISA SEED CCM reference; M=16, L=3).
+    #[test]
+    fn seed_ccm_kat() {
+        let key = Vec::from_hex("000102030405060708090a0b0c0d0e0f").unwrap();
+        let nonce = Vec::from_hex("202122232425262728292a2b").unwrap();
+        let aad = Vec::from_hex("404142434445464748494a4b").unwrap();
+        let pt = Vec::from_hex("101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
+            .unwrap();
+        let expected_ct =
+            Vec::from_hex("3963c3c8dd2586a2e419e31a65752de7d77c64fbc85b12cc24637164e0547f85")
+                .unwrap();
+        let expected_tag = Vec::from_hex("cf9c2277fc24284e2c13f8eab12575ea").unwrap();
+
+        let algorithm = Algorithm::seed_ccm();
+        let ctx = AeadCtx::new(&algorithm, &key, 16).unwrap();
+
+        let mut buffer = pt.clone();
+        let mut tag = [0u8; 16];
+        let tag_written = ctx
+            .seal_in_place(&nonce, buffer.as_mut_slice(), &mut tag, &aad)
+            .unwrap();
+        assert_eq!(buffer, expected_ct, "SEED-CCM ciphertext mismatch");
+        assert_eq!(tag_written, &expected_tag[..], "SEED-CCM tag mismatch");
+
+        let mut ct = expected_ct.clone();
+        ctx.open_in_place(&nonce, ct.as_mut_slice(), &expected_tag, &aad)
+            .unwrap();
+        assert_eq!(ct, pt, "SEED-CCM decrypt mismatch");
+
+        let mut ct2 = expected_ct.clone();
+        let mut bad_tag = expected_tag.clone();
+        bad_tag[0] ^= 0x01;
+        assert!(
+            ctx.open_in_place(&nonce, ct2.as_mut_slice(), &bad_tag, &aad)
+                .is_err(),
+            "SEED-CCM accepted a forged tag"
+        );
+    }
 
     #[test]
     fn in_out() {

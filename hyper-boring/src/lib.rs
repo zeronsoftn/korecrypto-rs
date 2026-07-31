@@ -2,12 +2,12 @@
 #![warn(missing_docs)]
 
 use crate::cache::SessionKey;
-use boring::error::ErrorStack;
-use boring::ex_data::Index;
-use boring::ssl::Ssl;
+use korecrypto::error::ErrorStack;
+use korecrypto::ex_data::Index;
+use korecrypto::ssl::Ssl;
 use std::fmt;
 use std::sync::LazyLock;
-use tokio_boring::SslStream;
+use tokio_korecrypto::SslStream;
 
 mod cache;
 mod v1;

@@ -7,7 +7,7 @@
 //! Provides ML-KEM-768 (recommended) and ML-KEM-1024 variants via [`Algorithm`].
 //!
 //! ```
-//! use boring::mlkem::{Algorithm, MlKemPrivateKey};
+//! use korecrypto::mlkem::{Algorithm, MlKemPrivateKey};
 //!
 //! let (public_key, private_key) = MlKemPrivateKey::generate(Algorithm::MlKem768).unwrap();
 //! let (ciphertext, shared_secret) = public_key.encapsulate().unwrap();

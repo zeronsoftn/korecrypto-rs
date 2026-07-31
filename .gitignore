@@ -4,3 +4,8 @@ Cargo.lock
 *.iml
 .vscode/
 .DS_Store
+/samples/
+# CAVP 시험벡터 자료(하네스 코드는 추적, 시험 데이터·임시물은 제외)
+/cavp-test/cavp/
+/cavp-test/t2/
+/cavp-test/a.patch

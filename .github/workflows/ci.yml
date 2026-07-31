@@ -55,11 +55,6 @@ jobs:
           enableCrossOsArchive: true
       - name: Fetch dependencies
         run: cargo fetch
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: clippy-${{ steps.rust-version.outputs.version }}-${{ hashFiles('Cargo.lock') }}
       - name: Cache cargo index (save)
         uses: actions/cache/save@v4
         with:
@@ -71,7 +66,7 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all --all-targets --features rpk,prf,mlkem
       - name: Check docs
-        run: cargo doc --no-deps -p boring -p boring-sys -p hyper-boring -p tokio-boring --features rpk,underscore-wildcards
+        run: cargo doc --no-deps -p korecrypto -p korecrypto-sys -p hyper-korecrypto -p tokio-korecrypto --features rpk,underscore-wildcards
         env:
           CARGO_BUILD_RUSTDOCFLAGS: "--cfg=docsrs"
           RUSTC_BOOTSTRAP: 1
@@ -108,11 +103,18 @@ jobs:
         - x86_64-mingw
         - i686-msvc
         - x86_64-msvc
+        - x86_64-uefi
+        - x86_64-uefi-fips
         include:
         - check_only: false
         - extra_test_args: ''
         - apt_packages: ''
         - custom_env: {}
+        # cargo feature (예: fips, uefi, "uefi,fips").
+        - features: ''
+        # UEFI(x86_64-unknown-uefi) 빌드 여부. true 면 clang-22 툴체인 설치 +
+        # 워크스페이스 테스트 대신 `-p korecrypto-sys -p korecrypto` 만 빌드(no_std/crypto 전용).
+        - uefi: false
         - thing: stable
           target: x86_64-unknown-linux-gnu
           rust: stable
@@ -208,7 +210,7 @@ jobs:
             LIBRARY_PATH: "C:\\msys64\\usr\\lib"
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: i686-mingw
           target: i686-pc-windows-gnu
           rust: stable
@@ -219,7 +221,7 @@ jobs:
             CMAKE_GENERATOR: "MinGW Makefiles"
             COLLECT_GCC: null
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: i686-msvc
           target: i686-pc-windows-msvc
           rust: stable-x86_64-msvc
@@ -228,7 +230,7 @@ jobs:
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
             CXXFLAGS: -msse2
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: x86_64-msvc
           target: x86_64-pc-windows-msvc
           rust: stable-x86_64-msvc
@@ -236,7 +238,7 @@ jobs:
           custom_env:
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
         - thing: x86_64-msvc-static
           target: x86_64-pc-windows-msvc
           rust: stable-x86_64-msvc
@@ -245,7 +247,23 @@ jobs:
             RUSTC_BOOTSTRAP: 1 # for -Z checksum-freshness
             RUSTFLAGS: -Dwarnings -C target-feature=+crt-static
           # CI's Windows doesn't have required root certs
-          extra_test_args: --workspace --exclude tokio-boring --exclude hyper-boring -Z checksum-freshness
+          extra_test_args: --workspace --exclude tokio-korecrypto --exclude hyper-korecrypto -Z checksum-freshness
+
+        # ===== UEFI target 빌드 =====
+        - thing: x86_64-uefi
+          target: x86_64-unknown-uefi
+          rust: stable
+          os: ubuntu-latest
+          check_only: true
+          uefi: true
+          features: uefi
+        - thing: x86_64-uefi-fips
+          target: x86_64-unknown-uefi
+          rust: stable
+          os: ubuntu-latest
+          check_only: true
+          uefi: true
+          features: uefi,kcmvp
     env:
       CARGO_HOME: ${{ github.workspace }}/.cache/cargo
       CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/.cache/build-dir
@@ -301,7 +319,7 @@ jobs:
         echo >> $GITHUB_ENV LDFLAGS="-L$MSYS_ROOT\\mingw32\\lib"
     - name: Install LLVM and Clang
       if: startsWith(matrix.os, 'windows')
-      uses: KyleMayes/install-llvm-action@v1
+      uses: KyleMayes/install-llvm-action@v2
       with:
         version: "11.0"
         directory: ${{ runner.temp }}/llvm
@@ -311,6 +329,18 @@ jobs:
     - name: Set Android Linker path
       if: endsWith(matrix.thing, '-android')
       run: echo "CARGO_TARGET_$(echo ${{ matrix.target }} | tr \\-a-z _A-Z)_LINKER=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/$(echo ${{ matrix.target }} | sed s/armv7/armv7a/)21-clang++" >> "$GITHUB_ENV"
+    - name: Install LLVM 22 (UEFI)
+      # UEFI/picolibc 빌드는 clang >= 19 필수(x86_64-unknown-uefi 데이터 레이아웃 버그).
+      # 비-FIPS 경로는 clang 을 강제하지 않아 CC/CXX 를 명시해야 시스템 gcc 로 폴백하지
+      # 않는다(FIPS 는 build.rs 가 clang 을 강제하지만 그 경우에도 clang-22 로 맞춘다).
+      if: matrix.uefi
+      run: |
+        wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+        echo "/usr/lib/llvm-22/bin" >> "$GITHUB_PATH"
+        echo "LIBCLANG_PATH=/usr/lib/llvm-22/lib" >> "$GITHUB_ENV"
+        echo "PICOLIBC_CC=clang-22" >> "$GITHUB_ENV"
+        echo "CC_x86_64_unknown_uefi=clang-22" >> "$GITHUB_ENV"
+        echo "CXX_x86_64_unknown_uefi=clang++-22" >> "$GITHUB_ENV"
     - name: Prepopulate cargo index
       uses: actions/cache/restore@v4
       with:
@@ -333,7 +363,14 @@ jobs:
         key: wintest-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
     - name: Build tests
       # We `build` because we want the linker to verify we are cross-compiling correctly for check-only targets.
-      run: cargo build -vv --target ${{ matrix.target }} --tests ${{ matrix.extra_test_args }}
+      if: "!matrix.uefi"
+      run: cargo build -vv --target ${{ matrix.target }} --tests ${{ matrix.extra_test_args }} ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
+      shell: bash
+      env: ${{ matrix.custom_env }}
+    - name: Build korecrypto-sys (UEFI)
+      # UEFI 타깃은 no_std/crypto 전용이라 워크스페이스(--tests) 대신 크레이트만 빌드.
+      if: matrix.uefi
+      run: cargo build -vv -p korecrypto-sys -p korecrypto --target ${{ matrix.target }} --features ${{ matrix.features }}
       shell: bash
       env: ${{ matrix.custom_env }}
       # By default it'd be saved after later cargo calls, which already invalidated the cache
@@ -345,22 +382,23 @@ jobs:
         key: ${{ steps.test-cache-restore.outputs.cache-primary-key }}
     - name: Run tests (skip=${{ matrix.check_only }})
       if: "!matrix.check_only"
-      run: cargo test --target ${{ matrix.target }} ${{ matrix.extra_test_args }}
+      run: cargo test --target ${{ matrix.target }} ${{ matrix.extra_test_args }} ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
       shell: bash
       env: ${{ matrix.custom_env }}
-    - name: Test boring-sys cargo publish
-      if: "matrix.thing != 'i686-mingw' && matrix.thing != 'i686-msvc' && matrix.thing != 'x86_64-mingw'" # slowest builds
+    - name: Test korecrypto-sys cargo publish
+      # feature 빌드(fips/uefi)는 별도 publish 검증(test-fips 등)이 있고 slowest 라 생략.
+      if: "matrix.features == '' && matrix.thing != 'i686-mingw' && matrix.thing != 'i686-msvc' && matrix.thing != 'x86_64-mingw'" # slowest builds
       # Running `cargo publish --dry-run` tests two things:
       #
-      # 1. That `boring-sys` can build BoringSSL with just the files included
+      # 1. That `korecrypto-sys` can build BoringSSL with just the files included
       #    in the crates.io package (as determined by the `include` field in
       #    the `Cargo.toml`).
-      # 2. That the final `boring-sys` package size, including the BoringSSL
+      # 2. That the final `korecrypto-sys` package size, including the BoringSSL
       #    submodules, is not too large to be published to `crates.io`.
       #
       # Both of these may no longer be the case after updating the BoringSSL
       # submodules to a new revision, so it's important to test this on CI.
-      run: cargo publish --dry-run --target ${{ matrix.target }} -p boring-sys
+      run: cargo publish --dry-run --target ${{ matrix.target }} -p korecrypto-sys
       shell: bash
       env: ${{ matrix.custom_env }}
 
@@ -379,19 +417,115 @@ jobs:
       with:
         go-version: '>=1.22.0'
     - name: Run tests
-      run: cargo test --features fips
-    - name: Test boring-sys cargo publish (FIPS)
+      run: cargo test --features kcmvp
+    - name: Test korecrypto-sys cargo publish (FIPS)
       # Running `cargo publish --dry-run` tests two things:
       #
-      # 1. That `boring-sys` can build BoringSSL with just the files included
+      # 1. That `korecrypto-sys` can build BoringSSL with just the files included
       #    in the crates.io package (as determined by the `include` field in
       #    the `Cargo.toml`).
-      # 2. That the final `boring-sys` package size, including the BoringSSL
+      # 2. That the final `korecrypto-sys` package size, including the BoringSSL
       #    submodules, is not too large to be published to `crates.io`.
       #
       # Both of these may no longer be the case after updating the BoringSSL
       # submodules to a new revision, so it's important to test this on CI.
-      run: cargo publish --dry-run -p boring-sys --features fips
+      run: cargo publish --dry-run -p korecrypto-sys --features kcmvp
+
+  # FIPS 가동 전 자가시험(무결성 검사 + KAT)과 승인 알고리즘을 실제로 "실행"해 검증하는
+  # 전용 job. 테스트 바이너리(`boring-sys/tests/fips_selftest.rs`, test_fips.cc 의 Rust
+  # 포팅)를 실행하면 FIPS 모듈 로드 시 무결성/KAT 자가시험이 돌고(실패 시 startup abort),
+  # 이어서 각 승인 알고리즘 연산을 수행한다. 크로스 아키텍처(aarch64)는 qemu-user-static
+  # 로 타깃 바이너리를 에뮬레이션 실행하고, Windows(mingw/msvc)는 windows-latest 네이티브.
+  # NOTE: BoringSSL delocate(FIPS 무결성 경계)는 x86_64 와 aarch64 만 지원한다.
+  test-fips-selftest:
+    name: FIPS self-test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86_64-linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rust: stable
+          - name: aarch64-linux
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            rust: stable
+            cross: aarch64-linux-gnu
+            qemu_arch: aarch64
+            apt: crossbuild-essential-arm64 qemu-user-static
+          - name: x86_64-mingw
+            os: windows-latest
+            target: x86_64-pc-windows-gnu
+            rust: stable
+          - name: x86_64-msvc
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust: stable-x86_64-msvc
+          - name: x86_64-msvc-static
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust: stable-x86_64-msvc
+            rustflags: "-C target-feature=+crt-static"
+          # 릴리스 최적화된 bcm 어셈블리는 디버그에 없는 코드젠(rex64 tailcall,
+          # cmpq/.refptr 경계검사)을 만들어 delocate COFF 경로를 다르게 태운다.
+          # MSVC 릴리스 회귀를 잡기 위해 --release 로도 자가시험을 돌린다.
+          - name: x86_64-msvc-release
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust: stable-x86_64-msvc
+            release: true
+    env:
+      RUSTC_BOOTSTRAP: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (rustup)
+        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }} && rustup target add ${{ matrix.target }}
+        shell: bash
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM and Clang (Windows)
+        # FIPS(COFF delocate)는 clang 을 강제하므로 Windows 에서도 clang 이 필요하다.
+        # 버전 요구:
+        #   - llvm-11: `Span` member reference 오류(crypto/fipsmodule/cipher/internal.h).
+        #   - llvm-12: 최신 Windows SDK 의 msvcrtd.lib 가 참조하는 EH continuation guard
+        #     심볼(__guard_eh_cont_table/_count)을 lld-link 가 합성하지 못해 링크 실패
+        #     (해당 합성은 lld-link 13+).
+        #   - llvm-21: 이전 버전은 regex check 에서 실패한다.
+        if: startsWith(matrix.os, 'windows')
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1"
+          directory: ${{ runner.temp }}/llvm
+      - name: Set LIBCLANG_PATH (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
+      - name: Install cross toolchain + qemu-user (Linux cross)
+        if: matrix.qemu_arch != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+      - name: Configure cross build + qemu runner (Linux cross)
+        if: matrix.qemu_arch != ''
+        shell: bash
+        # FIPS 는 clang 을 강제한다. 크로스 링크·무결성 해시 일관성은 boring-sys/cmake/
+        # <arch>-linux.cmake 가 clang 에 GNU 크로스 ld 를 지정해 처리한다.
+        # KORECRYPTO_FIPS_SYSROOT 는 설정하지 않는다(--sysroot 가 GNU 링커스크립트의
+        # 절대경로 해석을 sysroot 기준으로 이중화해 링크를 깨뜨림).
+        run: |
+          T=$(echo '${{ matrix.target }}' | tr '[:lower:]-' '[:upper:]_')
+          echo "CARGO_TARGET_${T}_LINKER=${{ matrix.cross }}-gcc" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_${T}_RUNNER=qemu-${{ matrix.qemu_arch }}-static -L /usr/${{ matrix.cross }}" >> "$GITHUB_ENV"
+      - name: Run FIPS self-test (test_fips port)
+        shell: bash
+        # boring-sys/tests/fips_selftest.rs = test_fips.cc 의 Rust 포팅. 로드 시
+        # 무결성/KAT 자가시험 + 승인 알고리즘 실행을 검증한다.
+        run: cargo test -p korecrypto-sys --features kcmvp --target ${{ matrix.target }} ${{ matrix.release && '--release' || '' }} --test fips_selftest -- --nocapture
+        env:
+          RUSTFLAGS: -Dwarnings ${{ matrix.rustflags }}
 
   test-boringssl:
     name: Test BoringSSL upstream test suite
@@ -445,7 +579,10 @@ jobs:
       with:
         go-version: '>=1.22.0'
     - name: Install ${{ matrix.target }} toolchain
-      run: brew tap messense/macos-cross-toolchains && brew install ${{ matrix.target }}
+      run: |
+        brew tap messense/macos-cross-toolchains
+        brew trust messense/macos-cross-toolchains
+        brew install ${{ matrix.target }}
     - name: Set BORING_BSSL_SYSROOT
       run: echo "BORING_BSSL_SYSROOT=$(brew --prefix ${{ matrix.target }})/toolchain/${{ matrix.target }}/sysroot" >> $GITHUB_ENV
       shell: bash
@@ -456,6 +593,43 @@ jobs:
       run: echo "CXXFLAGS=-D__STDC_FORMAT_MACROS" >> $GITHUB_ENV
     - name: Build for ${{ matrix.target }}
       run: cargo build --target ${{ matrix.target }} --all-targets
+
+  uefi-kcmvp-smoketest:
+    name: UEFI KCMVP smoketest (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-unknown-uefi
+            qemu_pkg: qemu-system-x86
+            fw_pkg: ovmf
+          - arch: aarch64
+            target: aarch64-unknown-uefi
+            qemu_pkg: qemu-system-arm
+            fw_pkg: qemu-efi-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (stable) + UEFI target
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM 22
+        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+      - name: Install QEMU and UEFI firmware
+        run: sudo apt-get install -y ${{ matrix.qemu_pkg }} ${{ matrix.fw_pkg }}
+      - name: Enable KVM (x86_64)
+        run: |
+          [ ! -e /dev/kvm ] || sudo chmod 0666 /dev/kvm
+      - name: Run UEFI smoketest
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: ./uefi-smoketest/run-qemu.sh
 
   test-features:
     name: Test features
@@ -469,7 +643,7 @@ jobs:
     - name: Install Rust (rustup)
       run: rustup update stable --no-self-update && rustup default stable
       shell: bash
-    - run: cargo check --no-default-features
+    - run: cargo check --no-default-features --features std-libc
       name: Check `--no-default-features`
     - run: cargo check --features prf,mlkem,credential
       name: Check `mlkem,credential`
@@ -481,3 +655,99 @@ jobs:
       name: Run `rpk,underscore-wildcards` tests
     - run: cargo test --features rpk,underscore-wildcards,mlkem
       name: Run `rpk,underscore-wildcards` tests
+
+  # KCMVP 엔트로피 평가(SP 800-90B)용 잡음원 샘플 파일을 OS 별로 생성해 artifact 로
+  # 올린다. 수집은 반드시 실제 KCMVP 모듈 경로(KCMVP_entropy_raw_noise_samples →
+  # bssl::entropy::GetSamples)로 이뤄진다. Linux/Windows 는 네이티브 바이너리로,
+  # UEFI 는 QEMU 게스트 안에서 수집해 시리얼로 덤프한 뒤 호스트에서 포맷한다.
+  entropy-assess:
+    name: Entropy assessment (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rust: stable
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust: stable-x86_64-msvc
+    env:
+      RUSTC_BOOTSTRAP: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (rustup)
+        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }} && rustup target add ${{ matrix.target }}
+        shell: bash
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM and Clang (Windows)
+        # FIPS(COFF delocate)는 Windows 에서도 clang 을 강제한다(test-fips-selftest 참고).
+        if: startsWith(matrix.os, 'windows')
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1"
+          directory: ${{ runner.temp }}/llvm
+      - name: Set LIBCLANG_PATH (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
+      - name: Generate entropy assessment file
+        shell: bash
+        # 실제 KCMVP 모듈 경로로 25만 개 잡음원 샘플을 수집해 평가 파일을 만든다.
+        run: cargo run -p entropy-assess --features kcmvp --target ${{ matrix.target }} -- collect --label ${{ matrix.name }} entropy-${{ matrix.name }}.txt
+      - name: Upload entropy assessment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: entropy-${{ matrix.name }}
+          path: entropy-${{ matrix.name }}.txt
+          if-no-files-found: error
+
+  entropy-assess-uefi:
+    name: Entropy assessment (uefi-${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86_64-unknown-uefi
+            qemu_pkg: qemu-system-x86
+            fw_pkg: ovmf
+          - arch: aarch64
+            target: aarch64-unknown-uefi
+            qemu_pkg: qemu-system-arm
+            fw_pkg: qemu-efi-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Rust (stable) + UEFI target
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+      - name: Install golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.22.0'
+      - name: Install LLVM 22
+        run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+      - name: Install QEMU, UEFI firmware, xxd
+        run: sudo apt-get install -y ${{ matrix.qemu_pkg }} ${{ matrix.fw_pkg }} xxd
+      - name: Enable KVM (x86_64)
+        run: |
+          [ ! -e /dev/kvm ] || sudo chmod 0666 /dev/kvm
+      - name: Generate entropy assessment file (UEFI/QEMU)
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: ./uefi-smoketest/run-entropy.sh entropy-uefi-${{ matrix.arch }}.txt
+      - name: Upload entropy assessment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: entropy-uefi-${{ matrix.arch }}
+          path: entropy-uefi-${{ matrix.arch }}.txt
+          if-no-files-found: error

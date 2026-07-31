@@ -1,16 +1,16 @@
 use crate::cache::{SessionCache, SessionKey};
 use crate::{key_index, HttpsLayerSettings, MaybeHttpsStream};
 use antidote::Mutex;
-use boring::error::ErrorStack;
-use boring::ssl::{
-    ConnectConfiguration, Ssl, SslConnector, SslConnectorBuilder, SslMethod, SslRef,
-    SslSessionCacheMode,
-};
 use http::uri::Scheme;
 use http::Uri;
 use hyper::rt::{Read, ReadBufCursor, Write};
 use hyper_util::client::legacy::connect::{Connected, Connection, HttpConnector};
 use hyper_util::rt::TokioIo;
+use korecrypto::error::ErrorStack;
+use korecrypto::ssl::{
+    ConnectConfiguration, Ssl, SslConnector, SslConnectorBuilder, SslMethod, SslRef,
+    SslSessionCacheMode,
+};
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
@@ -261,7 +261,7 @@ where
             }
 
             let ssl = inner.setup_ssl(&uri, host)?;
-            let stream = tokio_boring::SslStreamBuilder::new(ssl, conn)
+            let stream = tokio_korecrypto::SslStreamBuilder::new(ssl, conn)
                 .connect()
                 .await?;
 
