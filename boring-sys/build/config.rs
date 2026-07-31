@@ -20,6 +20,9 @@ pub(crate) struct Config {
 pub(crate) struct Features {
     pub(crate) baremetal: bool,
     pub(crate) uefi: bool,
+    /// 시스템 엔트로피 소스를 빌드에 포함하지 않고, 통합자가 제공하는
+    /// `CRYPTO_init_sysrand` / `CRYPTO_sysrand` 를 링크한다.
+    pub(crate) custom_sysrand: bool,
     pub(crate) fips: bool,
     pub(crate) rpk: bool,
     pub(crate) underscore_wildcards: bool,
@@ -150,6 +153,7 @@ impl Features {
         Self {
             baremetal: cfg!(feature = "baremetal"),
             uefi: cfg!(feature = "uefi"),
+            custom_sysrand: cfg!(feature = "custom-sysrand"),
             fips: cfg!(feature = "kcmvp"),
             rpk: cfg!(feature = "rpk"),
             underscore_wildcards: cfg!(feature = "underscore-wildcards"),

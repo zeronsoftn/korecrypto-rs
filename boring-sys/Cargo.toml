@@ -77,7 +77,22 @@ allow-crl-extensions-bad-version = []
 underscore-wildcards = []
 
 uefi = ["baremetal"]
-baremetal = ["picolibc"]
+baremetal = ["picolibc", "custom-sysrand"]
+
+# 시스템 엔트로피 소스를 라이브러리에 포함하지 않는다. BoringSSL 은
+# `CRYPTO_init_sysrand` / `CRYPTO_sysrand` 를 C 링키지로 선언만 하고(구현 없음),
+# 통합자가 두 심볼을 정의해 최종 링크 시 공급해야 한다. 공급하지 않으면 링크
+# 에러가 난다.
+#
+#     #[no_mangle] pub extern "C" fn CRYPTO_init_sysrand() {}
+#     #[no_mangle] pub extern "C" fn CRYPTO_sysrand(buf: *mut u8, len: usize) { ... }
+#
+# `CRYPTO_sysrand` 는 실패할 수 없다. 엔트로피를 얻지 못하면 낮은 품질의 바이트를
+# 돌려주지 말고 프로세스를 abort 해야 한다.
+#
+# OS RNG 가 없는 bare-metal(UEFI 포함)은 이 모드가 강제되며(`baremetal` 이 포함),
+# 호스트 OS 가 있는 타깃도 검증된 외부 엔트로피 소스를 쓰려면 단독으로 켤 수 있다.
+custom-sysrand = []
 
 # UEFI/baremetal(freestanding) 빌드 지원. 활성화하면 picolibc 크레이트를 받아
 # freestanding C 표준 라이브러리로 정적 링크하고, picolibc 가 `links = "c"` 로

@@ -126,7 +126,7 @@ pub use crate::ffi::init;
 
 /// Re-export of the low-level `korecrypto-sys` FFI bindings, so downstream
 /// crates can depend on `korecrypto` alone and still reach the raw C API
-/// (e.g. `korecrypto::sys::CRYPTO_uefi_init`).
+/// (e.g. `korecrypto::sys::CRYPTO_library_init`).
 pub use ::korecrypto_sys as sys;
 
 // KCMVP 상태/엔트로피 API 는 no_std 안전(ffi 만 사용)하므로 baremetal 에서도 노출한다.

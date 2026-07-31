@@ -16,6 +16,7 @@ extern crate picolibc;
 use core::arch::asm;
 use core::ffi::{c_int, c_void};
 use uefi::prelude::*;
+use uefi::proto::rng::Rng;
 
 use log;
 
@@ -81,6 +82,41 @@ extern "C" fn close(_fd: c_int) -> c_int {
 #[no_mangle]
 extern "C" fn _exit(_code: c_int) -> ! {
     unsafe { poweroff() }
+}
+
+// ---- 시스템 엔트로피 소스 (korecrypto-sys 의 `custom-sysrand` 계약) ----
+//
+// bare-metal 빌드의 BoringSSL 은 CRYPTO_init_sysrand / CRYPTO_sysrand 를 선언만
+// 하고 구현하지 않는다. UEFI 에는 OS RNG 가 없으므로 통합자인 우리가 펌웨어의
+// EFI_RNG_PROTOCOL 로 두 심볼을 제공한다. 이 두 함수가 없으면 링크되지 않는다.
+
+/// 초기화가 필요 없다. 프로토콜은 매 호출마다 연다(Boot Services 가 살아 있는
+/// 동안에만 유효하므로 핸들을 캐시하지 않는다).
+#[no_mangle]
+extern "C" fn CRYPTO_init_sysrand() {}
+
+/// `out[..len]` 을 EFI_RNG_PROTOCOL 난수로 채운다.
+///
+/// BoringSSL 계약상 이 함수는 실패할 수 없다. 엔트로피를 얻지 못하면 품질이
+/// 낮은 바이트를 돌려주는 대신 즉시 중단해야 한다.
+#[no_mangle]
+extern "C" fn CRYPTO_sysrand(out: *mut u8, len: usize) {
+    if len == 0 {
+        return;
+    }
+    assert!(!out.is_null(), "CRYPTO_sysrand: null buffer");
+
+    // SAFETY: BoringSSL 이 `len` 바이트 쓰기 가능한 버퍼를 넘긴다고 보장한다.
+    let buf = unsafe { core::slice::from_raw_parts_mut(out, len) };
+
+    let handle = uefi::boot::get_handle_for_protocol::<Rng>()
+        .expect("EFI_RNG_PROTOCOL unavailable: cannot obtain entropy");
+    let mut rng = uefi::boot::open_protocol_exclusive::<Rng>(handle)
+        .expect("failed to open EFI_RNG_PROTOCOL");
+
+    // algorithm=None 이면 펌웨어의 기본(가장 강한) 알고리즘을 쓴다.
+    rng.get_rng(None, buf)
+        .expect("EFI_RNG_PROTOCOL GetRNG failed");
 }
 
 // mingw64 어셈블리의 SE 핸들러(se_handler)들은 `__imp_RtlVirtualUnwind` 를
@@ -235,16 +271,8 @@ fn main() -> Status {
     unsafe {
         log::info!("=== korecrypto UEFI KCMVP smoketest ===");
 
-        // KCMVP 엔트로피: UEFI 에서 BoringSSL 의 CRYPTO_sysrand 는 EFI_RNG_PROTOCOL 을
-        // 통해 난수를 얻으며, 그러려면 Boot Services 포인터를 CRYPTO_uefi_init 으로
-        // 먼저 전달해야 한다. 호출하지 않으면 첫 RNG 사용 시 abort 한다(RSA 자가시험 등).
-        let bs = uefi::table::system_table_raw()
-            .expect("UEFI system table unavailable")
-            .as_ref()
-            .boot_services;
-        korecrypto::sys::CRYPTO_uefi_init(bs.cast());
-        log::info!("CRYPTO_uefi_init(boot_services={bs:p}) done");
-
+        // KCMVP 엔트로피는 이 크레이트가 제공하는 CRYPTO_sysrand(EFI_RNG_PROTOCOL)
+        // 로 공급된다. 별도 초기화 호출은 없고, BoringSSL 이 필요할 때 부른다.
         korecrypto::sys::CRYPTO_library_init();
 
         #[cfg(feature = "entropy-dump")]

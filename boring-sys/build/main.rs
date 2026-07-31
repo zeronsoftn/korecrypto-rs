@@ -254,6 +254,18 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
 
     boringssl_cmake.define("CMAKE_SUPPRESS_REGENERATION", "ON");
 
+    // 시스템 엔트로피 소스를 빌드에 넣지 않는다. BoringSSL 은 CRYPTO_init_sysrand /
+    // CRYPTO_sysrand 를 선언만 하고, 통합자가 정의한 심볼이 최종 링크에서 붙는다.
+    // bare-metal 은 target.h 가 KORECRYPTO_BAREMETAL 로부터 자동 유도하지만, 호스트
+    // OS 타깃에서 단독으로 켤 수 있어야 하므로 여기서 명시 전달한다.
+    //
+    // 아래의 조기 return(toolchain file / 네이티브 빌드) 보다 앞에 두어야 한다.
+    // 그 뒤의 플랫폼 블록은 크로스 빌드에서만 실행되는데, 이 옵션은 네이티브
+    // 호스트 빌드에서도 적용되어야 한다.
+    if config.features.custom_sysrand {
+        boringssl_cmake.define("KORECRYPTO_CUSTOM_SYSRAND", "1");
+    }
+
     if config.env.cmake_toolchain_file.is_some() {
         return boringssl_cmake;
     }
@@ -971,6 +983,9 @@ fn generate_bindings(config: &Config) -> Result<PathBuf, Box<dyn std::error::Err
     }
     if config.features.baremetal {
         builder = builder.clang_arg("-DKORECRYPTO_BAREMETAL")
+    }
+    if config.features.custom_sysrand {
+        builder = builder.clang_arg("-DKORECRYPTO_CUSTOM_SYSRAND")
     }
 
     if let Some(sysroot) = &config.env.sysroot {

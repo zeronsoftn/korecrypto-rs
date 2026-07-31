@@ -244,7 +244,7 @@ llvm-22 로 갱신하면 `x86_64-unknown-uefi` 가 동작한다(단, **MSVC C++ 
 - **libc++/libc++abi**: `USE_CUSTOM_LIBCXX=1` → CMake 가 자동으로 llvm-project `llvmorg-22.1.8` 를 받아 `util/bot/libcxx{,abi}` 로 연결, 업스트림 블록이 UEFI 툴체인으로 함께 빌드. 핵심 설정: `__config_site` freestanding 화(스레드/로캘/iostream/와이드문자 off), `-D__LP64__=1`(libc++abi `__cxa_exception` 레이아웃), `-fno-exceptions`(이 타깃에서 clang-22 의 예외 코드젠 SIGSEGV 회피), `-fno-threadsafe-statics`, `_LIBCXXABI_HAS_NO_THREADS`; host 의존 소스(스레드/로캘/iostream/예외 personality·terminate·guard 등) 제외.
 - **delocate MSVC 지원**: PEG 문법에 따옴표 심볼(`"?...@@"`)·`@`-심볼·CodeView 디렉티브(`.cv_*`) 추가(재생성). 따옴표 심볼의 local-target/redirector/accessor/external-ptr 이름은 따옴표 안쪽에 접두/접미를 넣어 파생(`decorateSymbol`), 디렉티브 재출력 시 재따옴표(`coffQuoteSymbol`). 외부 데이터 값 적재(`movq stderr(%rip),reg`)는 포인터 적재 후 역참조로 변환.
 - **소스 가드**: 경계 심볼(BORINGSSL_bcm_text_*)을 `extern "C"` 로(=MSVC 비맹글링, delocate 합성과 일치); bcm.cc/rand 의 POSIX 헤더 UEFI 가드; 지터 엔트로피 UEFI 활성화.
-- **엔트로피**: `crypto/rand/uefi.cc` — `CRYPTO_uefi_init(gBS)` 로 EFI Boot Services 를 받아 `EFI_RNG_PROTOCOL` 로 CRYPTO_sysrand 제공(`OPENSSL_RAND_UEFI`).
+- **엔트로피**: 라이브러리는 시스템 엔트로피 소스를 포함하지 않는다(`KORECRYPTO_CUSTOM_SYSRAND`). `CRYPTO_init_sysrand` / `CRYPTO_sysrand` 를 C 링키지로 선언만 하고(`crypto/bcm_support.h`), 통합자가 두 심볼을 정의해 최종 링크 시 공급한다. bare-metal(UEFI 포함)은 OS RNG 가 없으므로 `openssl/target.h` 가 `KORECRYPTO_BAREMETAL` 로부터 이 모드를 자동 유도하며, 호스트 OS 타깃도 `custom-sysrand` feature 로 선택할 수 있다. UEFI 전용 글루(구 `crypto/rand/uefi.cc` 의 `CRYPTO_uefi_init(gBS)`)는 제거했고, `uefi-smoketest` 가 `EFI_RNG_PROTOCOL` 로 두 심볼을 구현하는 통합자 예시다.
 
 검증(`make build-uefi` → `make verify-hash-uefi`): COFF `libcrypto.a`/`bcm.o` 생성, 해시 주입 완료, **해시영역 재배치 0개**, 정적 해시 일치(calculated==injected). 런타임 자가시험은 wine 불가(MSVC freestanding) → 실제 UEFI(QEMU/OVMF)에서 별도 확인 필요.
 
@@ -263,7 +263,7 @@ llvm-22 로 갱신하면 `x86_64-unknown-uefi` 가 동작한다(단, **MSVC C++ 
   - build.rs: uefi+picolibc 시 `OPENSSL_NO_ASM=1`, `USE_CUSTOM_LIBCXX=1`, `CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY`, **`no_default_flags(true)`**(cmake-rs 가 주입하는 `--target=x86_64-unknown-windows-gnu` 를 막고 크로스컴파일 블록의 `CMAKE_*_COMPILER_TARGET=uefi` 가 트리플 결정 → `__UEFI__` 정의로 libc++ 가 Windows 경로 대신 `aligned_alloc` 사용). **crypto 만 빌드/링크**(ssl 은 소켓 등 OS 의존으로 제외). FIPS 컴파일러는 uefi 에서 `CC/CXX`(clang>=19) 사용. 번들 `libcxx`/`libcxxabi` 링크(`liblibcxx.a`/`liblibcxxabi.a`).
   - bindgen: uefi 타깃 인자(`--target` + `-I $DEP_C_INCLUDE`), 레이아웃 테스트 off(clang LLP64 vs Rust `c_long=i64` 불일치 회피).
   - lib.rs: **`#![no_std]`** + `core::ffi`, bindgen `use_core()`.
-- **검증 하네스 `uefi-smoketest/`**(독립 워크스페이스): `uefi`(global_allocator) + picolibc(malloc) + `korecrypto-sys`(fips,picolibc). picolibc freestanding 스텁(write/read/lseek/close/_exit) + MS-ABI `__chkstk` no-op 제공. `CRYPTO_library_init`/`OPENSSL_malloc` 호출로 링크 강제.
+- **검증 하네스 `uefi-smoketest/`**(독립 워크스페이스): `uefi`(global_allocator) + picolibc(malloc) + `korecrypto-sys`(fips,picolibc). picolibc freestanding 스텁(write/read/lseek/close/_exit) + MS-ABI `__chkstk` no-op 제공. 통합자 몫인 `CRYPTO_init_sysrand`/`CRYPTO_sysrand` 를 `EFI_RNG_PROTOCOL`(`uefi::proto::rng::Rng`)로 구현한다. `CRYPTO_library_init`/`OPENSSL_malloc` 호출로 링크 강제.
 
 검증 결과: `cargo build --target x86_64-unknown-uefi` 로 **PE32+ EFI application**(`uefi-smoketest.efi`, Subsystem `EFI_APPLICATION`) 생성 — boringssl crypto(FIPS) + picolibc(libc/libm+malloc) + libc++/libc++abi + no_std 크레이트가 끊김 없이 링크됨. 빌드 방법은 `uefi-smoketest/README.md` 참조.
 

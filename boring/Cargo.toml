@@ -28,7 +28,12 @@ kcmvp = ["korecrypto-sys/kcmvp"]
 
 # baremetal
 uefi = ["korecrypto-sys/uefi", "baremetal"]
-baremetal = ["korecrypto-sys/baremetal", "picolibc"]
+baremetal = ["korecrypto-sys/baremetal", "picolibc", "custom-sysrand"]
+
+# 시스템 엔트로피 소스를 링크하지 않는다. `CRYPTO_init_sysrand` / `CRYPTO_sysrand`
+# 를 직접 정의해 공급해야 하며, 없으면 링크 에러가 난다. 자세한 계약은
+# korecrypto-sys 의 동명 feature 설명 참고. bare-metal 은 항상 이 모드다.
+custom-sysrand = ["korecrypto-sys/custom-sysrand"]
 picolibc = ["korecrypto-sys/picolibc", "dep:picolibc"]
 
 # **DO NOT USE** This will be removed without warning in future releases.
