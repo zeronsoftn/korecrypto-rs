@@ -549,6 +549,14 @@ fn get_extra_clang_args_for_bindgen(config: &Config) -> Vec<String> {
                 // 류의 에러로 실패한다. MSVC ABI 타깃을 명시한다.
                 params.push(format!("--target={}", config.clang_target()));
             }
+            // in-process libclang 은 MSVC UCRT/SDK 시스템 include 를 자동 감지 못함.
+            // 경로 탐색은 여기서 안 하고, 임베딩 빌드가 env 로 넘긴 디렉터리를 전달.
+            if let Ok(dirs) = std::env::var("KORECRYPTO_BINDGEN_EXTRA_INCLUDE") {
+                for dir in dirs.split(';').filter(|s| !s.is_empty()) {
+                    params.push("-isystem".to_string());
+                    params.push(dir.to_string());
+                }
+            }
         }
     }
 
